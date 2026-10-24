@@ -26,11 +26,20 @@ export function createFormatters({ currency, locale = LOCALE }: { currency: stri
   };
 }
 
-/** Parses a user-typed amount like "1,290.50" into minor units, or null if it isn't a positive number. */
-export function parseAmount(input: string): number | null {
+/**
+ * Parses a user-typed amount like "1,290.50" into minor units. Returns null for blank or invalid input,
+ * and for zero unless `allowZero` is set (tax and super can legitimately be 0).
+ */
+export function parseAmount(input: string, { allowZero = false } = {}): number | null {
+  if (input.trim() === "") return null;
   const value = Number(input.replace(/,/g, "").trim());
-  if (!Number.isFinite(value) || value <= 0) return null;
+  if (!Number.isFinite(value) || value < 0 || (value === 0 && !allowZero)) return null;
   return Math.round(value * 100);
+}
+
+/** "38h", "7.6h", "0h": one decimal place at most. */
+export function formatHours(hours: number): string {
+  return `${Math.round(hours * 10) / 10}h`;
 }
 
 /** Minor units to the plain decimal string used in form inputs: 42400 -> "424", 42450 -> "424.5". */

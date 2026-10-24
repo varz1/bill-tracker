@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountToInput, createFormatters, parseAmount } from "../src/shared/format";
+import { amountToInput, createFormatters, formatHours, parseAmount } from "../src/shared/format";
 import type { Bill } from "../src/shared/schemas";
 import { sortViews, timeline, totals, viewBill } from "../src/shared/summary";
 
@@ -113,6 +113,20 @@ describe("amount parsing", () => {
 
   it("rejects empty, zero, negative and non-numeric input", () => {
     for (const bad of ["", "0", "-5", "abc", "1e999"]) expect(parseAmount(bad)).toBeNull();
+  });
+
+  it("accepts zero only when asked to", () => {
+    expect(parseAmount("0")).toBeNull();
+    expect(parseAmount("0", { allowZero: true })).toBe(0);
+    expect(parseAmount("", { allowZero: true })).toBeNull();
+    expect(parseAmount("-1", { allowZero: true })).toBeNull();
+  });
+
+  it("formats hours with at most one decimal", () => {
+    expect(formatHours(38)).toBe("38h");
+    expect(formatHours(7.6)).toBe("7.6h");
+    expect(formatHours(7.64)).toBe("7.6h");
+    expect(formatHours(0)).toBe("0h");
   });
 
   it("round-trips through the form input representation", () => {
