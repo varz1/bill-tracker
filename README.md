@@ -29,4 +29,6 @@ npm run typecheck
 npm run deploy     # vite build && wrangler deploy
 ```
 
+API reference: [docs/api.md](docs/api.md).
+
 Or connect the repo in Cloudflare (Workers Builds). Settings are in [docs/deploy.md](docs/deploy.md).

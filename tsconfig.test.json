@@ -9,7 +9,7 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["./worker-configuration.d.ts"]
   },
-  "include": ["tests", "src/shared"]
+  "include": ["tests", "src/shared", "src/worker", "worker-configuration.d.ts"]
 }
