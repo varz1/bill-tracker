@@ -7,7 +7,7 @@ import { api } from "./api";
 interface SettingsContextValue {
   settings: Settings;
   fmt: Formatters;
-  /** Today's date in the configured time zone. */
+  /** Today's date on the device. */
   today: IsoDate;
   update(patch: Partial<Settings>): Promise<void>;
 }
@@ -30,7 +30,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => (settings ? { settings, fmt: createFormatters(settings), today: todayIn(settings.timeZone), update } : null),
+    () =>
+      settings
+        ? {
+            settings,
+            fmt: createFormatters({ currency: settings.currency }),
+            today: todayIn(),
+            update,
+          }
+        : null,
     [settings, update],
   );
 

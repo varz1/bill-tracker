@@ -161,11 +161,11 @@ describe("income", () => {
 describe("settings", () => {
   it("returns defaults until changed, then merges patches", async () => {
     const initial = (await (await call("/api/settings")).json()) as { settings: Record<string, unknown> };
-    expect(initial.settings).toEqual({ currency: "AUD", locale: "en-AU", timeZone: "UTC", weekStartsOn: 1 });
+    expect(initial.settings).toEqual({ currency: "AUD", weekStartsOn: 1 });
 
-    await call("/api/settings", { method: "PATCH", body: { currency: "USD", locale: "en-US" } });
+    await call("/api/settings", { method: "PATCH", body: { currency: "USD", weekStartsOn: 0 } });
     const after = (await (await call("/api/settings")).json()) as { settings: Record<string, unknown> };
-    expect(after.settings).toEqual({ currency: "USD", locale: "en-US", timeZone: "UTC", weekStartsOn: 1 });
+    expect(after.settings).toEqual({ currency: "USD", weekStartsOn: 0 });
   });
 
   it("rejects an invalid currency code", async () => {

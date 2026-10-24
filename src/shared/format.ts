@@ -1,5 +1,4 @@
 import type { IsoDate } from "./dates";
-import type { Settings } from "./schemas";
 
 export interface Formatters {
   /** "$1,290" for whole amounts, "$424.50" otherwise. Input is minor units. */
@@ -10,7 +9,10 @@ export interface Formatters {
   dateSmart(date: IsoDate, today: IsoDate): string;
 }
 
-export function createFormatters({ currency, locale }: Pick<Settings, "currency" | "locale">): Formatters {
+/** The interface is English-only, so number and date formatting is fixed rather than following the browser. */
+export const LOCALE = "en-AU";
+
+export function createFormatters({ currency, locale = LOCALE }: { currency: string; locale?: string }): Formatters {
   const money = new Intl.NumberFormat(locale, { style: "currency", currency, trailingZeroDisplay: "stripIfInteger" });
   // Dates are calendar dates, not instants, so format them as UTC to avoid any time zone shift.
   const short = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });

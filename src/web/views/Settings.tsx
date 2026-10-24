@@ -3,7 +3,6 @@ import { SettingsPatchSchema, type Settings as SettingsValue } from "../../share
 import { useSettings } from "../lib/settings";
 
 const CURRENCIES = Intl.supportedValuesOf("currency");
-const TIME_ZONES = Intl.supportedValuesOf("timeZone");
 
 const input =
   "w-full rounded-md border border-ink/15 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40";
@@ -23,7 +22,6 @@ export default function Settings() {
     e.preventDefault();
     const currency = draft.currency.trim().toUpperCase();
     if (!CURRENCIES.includes(currency)) return setError("Choose a valid currency code, e.g. AUD.");
-    if (!TIME_ZONES.includes(draft.timeZone)) return setError("Choose a valid time zone, e.g. Australia/Adelaide.");
     const patch = SettingsPatchSchema.safeParse({ ...draft, currency });
     if (!patch.success) return setError("Some of these values aren't valid.");
 
@@ -56,29 +54,6 @@ export default function Settings() {
         <span className="mt-1 block text-xs text-ink/35">
           The app uses one currency. Changing it doesn't convert existing amounts.
         </span>
-      </label>
-
-      <label className="block">
-        <span className="mb-1 block text-xs text-ink/45">Locale</span>
-        <input value={draft.locale} onChange={(e) => set("locale", e.target.value)} placeholder="en-AU" className={input} />
-        <span className="mt-1 block text-xs text-ink/35">Controls number and date formatting, e.g. en-AU or en-US.</span>
-      </label>
-
-      <label className="block">
-        <span className="mb-1 block text-xs text-ink/45">Time zone</span>
-        <input list="time-zones" value={draft.timeZone} onChange={(e) => set("timeZone", e.target.value)} className={input} />
-        <datalist id="time-zones">
-          {TIME_ZONES.map((z) => (
-            <option key={z} value={z} />
-          ))}
-        </datalist>
-        <button
-          type="button"
-          onClick={() => set("timeZone", Intl.DateTimeFormat().resolvedOptions().timeZone)}
-          className="mt-1.5 text-xs text-ink/50 underline decoration-ink/20 underline-offset-2 hover:text-ink"
-        >
-          Use this device's time zone
-        </button>
       </label>
 
       <label className="block">

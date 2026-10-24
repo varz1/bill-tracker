@@ -46,8 +46,8 @@ export function diffDays(a: IsoDate, b: IsoDate): number {
   return Math.round((toMs(b) - toMs(a)) / DAY_MS);
 }
 
-/** Today's date in the given IANA time zone, e.g. "Australia/Adelaide". */
-export function todayIn(timeZone: string, now: Date = new Date()): IsoDate {
+/** Today's date in the given IANA time zone (e.g. "Australia/Adelaide"), or the device's own when omitted. */
+export function todayIn(timeZone?: string, now: Date = new Date()): IsoDate {
   // The en-CA locale formats dates as YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);
 }

@@ -74,10 +74,6 @@ export type IncomeInput = z.infer<typeof IncomeInputSchema>;
 export const SettingsSchema = z.object({
   /** ISO 4217 code. The app supports exactly one currency; there is no conversion. */
   currency: z.string().regex(/^[A-Z]{3}$/),
-  /** BCP 47 locale used for number and date formatting. */
-  locale: z.string().min(2).max(35),
-  /** IANA time zone used to decide what "today" is. */
-  timeZone: z.string().min(1).max(64),
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: z.union([z.literal(0), z.literal(1)]),
 });
@@ -86,7 +82,5 @@ export type Settings = z.infer<typeof SettingsSchema>;
 
 export const DEFAULT_SETTINGS: Settings = {
   currency: "AUD",
-  locale: "en-AU",
-  timeZone: "UTC",
   weekStartsOn: 1,
 };

@@ -12,7 +12,7 @@ Schemas live in [`src/shared/schemas.ts`](../src/shared/schemas.ts) and are shar
 | GET / PATCH / DELETE | `/api/shifts/:id` | |
 | GET / POST | `/api/income` | one record per payslip |
 | GET / PATCH / DELETE | `/api/income/:id` | |
-| GET / PATCH | `/api/settings` | `currency`, `locale`, `timeZone`, `weekStartsOn` |
+| GET / PATCH | `/api/settings` | `currency`, `weekStartsOn` |
 
 Errors: `400 { error: "invalid_body", issues }` (Zod issues with field paths), `404 { error: "not_found" }`.
 
