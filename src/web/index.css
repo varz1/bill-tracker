@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@theme {
+  --color-ink: #1c2b39;
+  --color-paper: #eaedf0;
+  --color-accent: #b8860b;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* The layout is designed for a phone; scale it up a little on larger screens. */
+@media (min-width: 640px) {
+  html {
+    font-size: 17px;
+  }
+}

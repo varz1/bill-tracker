@@ -14,7 +14,8 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "wrangler types && tsc -b",
     "test": "vitest run",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "hono": "^4.13.13",
