@@ -1,5 +1,6 @@
 import { Wallet } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { DEMO_MODE } from "./config";
 import { SettingsProvider } from "./lib/settings";
 import Bills from "./views/Bills";
 import Settings from "./views/Settings";
@@ -62,6 +63,10 @@ export default function App() {
           )}
           {tab === "settings" && <Settings />}
         </SettingsProvider>
+
+        {DEMO_MODE && (
+          <p className="mt-6 text-center text-xs text-ink/40">Demo app. All data shown here is made up.</p>
+        )}
       </div>
     </div>
   );

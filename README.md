@@ -32,4 +32,6 @@ npm run deploy     # vite build && wrangler deploy
 
 API reference: [docs/api.md](docs/api.md).
 
+Demo mode (a "made-up data" note and locked Settings) is on by default; turn it off in [`src/web/config.ts`](src/web/config.ts) for a real deployment.
+
 Or connect the repo in Cloudflare (Workers Builds). Settings are in [docs/deploy.md](docs/deploy.md).

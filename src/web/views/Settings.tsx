@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { SettingsPatchSchema, type Settings as SettingsValue } from "../../shared/schemas";
 import { inputClass, labelClass } from "../components/fields";
+import { DEMO_MODE } from "../config";
 import { useSettings } from "../lib/settings";
 
 const CURRENCIES = Intl.supportedValuesOf("currency");
@@ -18,6 +19,7 @@ export default function Settings() {
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (DEMO_MODE) return;
     const currency = draft.currency.trim().toUpperCase();
     if (!CURRENCIES.includes(currency)) return setError("Choose a valid currency code, e.g. AUD.");
     const patch = SettingsPatchSchema.safeParse({ ...draft, currency });
@@ -35,57 +37,60 @@ export default function Settings() {
 
   return (
     <form onSubmit={save} className="space-y-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm">
-      <label className="block">
-        <span className={labelClass}>Currency</span>
-        <input
-          list="currencies"
-          value={draft.currency}
-          onChange={(e) => set("currency", e.target.value.toUpperCase())}
-          maxLength={3}
-          className={`${inputClass} font-mono`}
-        />
-        <datalist id="currencies">
-          {CURRENCIES.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <span className="mt-1 block text-xs text-ink/35">
-          The app uses one currency. Changing it doesn't convert existing amounts.
-        </span>
-      </label>
+      {DEMO_MODE && <p className="text-xs text-ink/50">Settings are locked in this demo.</p>}
+      <fieldset disabled={DEMO_MODE} className="space-y-4">
+        <label className="block">
+          <span className={labelClass}>Currency</span>
+          <input
+            list="currencies"
+            value={draft.currency}
+            onChange={(e) => set("currency", e.target.value.toUpperCase())}
+            maxLength={3}
+            className={`${inputClass} font-mono`}
+          />
+          <datalist id="currencies">
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <span className="mt-1 block text-xs text-ink/35">
+            The app uses one currency. Changing it doesn't convert existing amounts.
+          </span>
+        </label>
 
-      <label className="block">
-        <span className={labelClass}>Week starts on</span>
-        <select
-          value={draft.weekStartsOn}
-          onChange={(e) => set("weekStartsOn", Number(e.target.value) as 0 | 1)}
-          className={`${inputClass} bg-white`}
-        >
-          <option value={1}>Monday</option>
-          <option value={0}>Sunday</option>
-        </select>
-      </label>
+        <label className="block">
+          <span className={labelClass}>Week starts on</span>
+          <select
+            value={draft.weekStartsOn}
+            onChange={(e) => set("weekStartsOn", Number(e.target.value) as 0 | 1)}
+            className={`${inputClass} bg-white`}
+          >
+            <option value={1}>Monday</option>
+            <option value={0}>Sunday</option>
+          </select>
+        </label>
 
-      {error && (
-        <p role="alert" className="text-xs text-red-600">
-          {error}
-        </p>
-      )}
-      {state === "error" && (
-        <p role="alert" className="text-xs text-red-600">
-          Couldn't save settings. Please try again.
-        </p>
-      )}
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={state === "saving"}
-          className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-ink/90 disabled:opacity-60"
-        >
-          Save
-        </button>
-        {state === "saved" && <span className="text-xs text-emerald-600">Saved</span>}
-      </div>
+        {error && (
+          <p role="alert" className="text-xs text-red-600">
+            {error}
+          </p>
+        )}
+        {state === "error" && (
+          <p role="alert" className="text-xs text-red-600">
+            Couldn't save settings. Please try again.
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={state === "saving"}
+            className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Save
+          </button>
+          {state === "saved" && <span className="text-xs text-emerald-600">Saved</span>}
+        </div>
+      </fieldset>
     </form>
   );
 }
