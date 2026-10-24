@@ -98,6 +98,10 @@ describe("formatters", () => {
     expect(createFormatters({ currency: "AUD", locale: "en-US" }).money(129000)).toBe("A$1,290");
   });
 
+  it("includes the weekday when asked", () => {
+    expect(fmt.weekdayDate("2026-10-24")).toBe("Sat 24 Oct");
+  });
+
   it("shows the year only when it differs from today's", () => {
     expect(fmt.date("2026-10-24")).toBe("24 Oct");
     expect(fmt.dateSmart("2026-12-01", "2026-10-24")).toBe("1 Dec");

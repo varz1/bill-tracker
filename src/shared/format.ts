@@ -5,6 +5,8 @@ export interface Formatters {
   money(minor: number): string;
   /** "24 Oct" */
   date(date: IsoDate): string;
+  /** "Sat 24 Oct" */
+  weekdayDate(date: IsoDate): string;
   /** "24 Oct" in the current year, "24 Oct 2027" otherwise. */
   dateSmart(date: IsoDate, today: IsoDate): string;
 }
@@ -17,11 +19,13 @@ export function createFormatters({ currency, locale = LOCALE }: { currency: stri
   // Dates are calendar dates, not instants, so format them as UTC to avoid any time zone shift.
   const short = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });
   const long = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const withWeekday = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const at = (d: IsoDate) => new Date(`${d}T00:00:00Z`);
 
   return {
     money: (minor) => money.format(minor / 100),
     date: (d) => short.format(at(d)),
+    weekdayDate: (d) => withWeekday.format(at(d)).replace(",", ""),
     dateSmart: (d, today) => (d.slice(0, 4) === today.slice(0, 4) ? short : long).format(at(d)),
   };
 }

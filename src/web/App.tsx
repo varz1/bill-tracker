@@ -1,18 +1,32 @@
 import { Wallet } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { SettingsProvider } from "./lib/settings";
 import Bills from "./views/Bills";
 import Settings from "./views/Settings";
 
+// The Income view pulls in the charting library, so load it only when that tab is opened.
+const Income = lazy(() => import("./views/Income"));
+
 const TABS = [
   { key: "bills", label: "Bills" },
+  { key: "income", label: "Income" },
   { key: "settings", label: "Settings" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["key"];
 
+/** The tab named in the URL hash (#income), so a refresh or a shared link keeps its place. */
+function tabFromHash(): Tab {
+  const name = window.location.hash.slice(1);
+  return TABS.find((t) => t.key === name)?.key ?? "bills";
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("bills");
+  const [tab, setTabState] = useState<Tab>(tabFromHash);
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    window.history.replaceState(null, "", `#${next}`);
+  };
 
   return (
     <div className="min-h-screen bg-paper font-sans text-ink">
@@ -39,7 +53,15 @@ export default function App() {
           ))}
         </nav>
 
-        <SettingsProvider>{tab === "bills" ? <Bills /> : <Settings />}</SettingsProvider>
+        <SettingsProvider>
+          {tab === "bills" && <Bills />}
+          {tab === "income" && (
+            <Suspense fallback={<p className="py-20 text-center text-sm text-ink/40">Loading…</p>}>
+              <Income />
+            </Suspense>
+          )}
+          {tab === "settings" && <Settings />}
+        </SettingsProvider>
       </div>
     </div>
   );

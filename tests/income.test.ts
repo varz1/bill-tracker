@@ -6,6 +6,7 @@ import {
   incomeStats,
   incomeWeeks,
   lastFinishedDay,
+  overview,
   settledUntil,
   shiftWeeks,
   weekStart,
@@ -200,5 +201,26 @@ describe("employerColors", () => {
   it("wraps around when there are more employers than colours", () => {
     const colors = employerColors(Array.from({ length: 8 }, (_, i) => `E${i}`));
     expect(Object.keys(colors)).toHaveLength(8);
+  });
+});
+
+describe("overview", () => {
+  it("is empty and safe with no data", () => {
+    const o = overview([], [], TODAY, 1);
+    expect(o.incomeWeeks).toEqual([]);
+    expect(o.employers).toEqual([]);
+    expect(o.stats.avgNet).toBeNull();
+    expect(o.hours.avgRate).toBeNull();
+  });
+
+  it("lists employers from both payslips and shifts, and leaves future weeks out of the hours chart", () => {
+    const o = overview(
+      [slip({ employer: "Shop" })],
+      [shift("2026-10-05", 8, "Cafe"), shift("2026-10-22", 8, "Cafe"), shift("2026-10-29", 8, "Cafe")],
+      TODAY,
+      1,
+    );
+    expect(o.employers).toEqual(["Cafe", "Shop"]);
+    expect(o.shiftWeeks.at(-1)?.weekStart).toBe("2026-10-19"); // Oct 26 week is in the future
   });
 });

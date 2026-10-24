@@ -1,8 +1,7 @@
-import { Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
 import type { BillView } from "../../shared/summary";
 import { CYCLE_LABELS } from "../lib/labels";
 import { useSettings } from "../lib/settings";
+import { RowActions } from "./RowActions";
 
 interface Props {
   view: BillView;
@@ -13,7 +12,6 @@ interface Props {
 export function BillRow({ view, onEdit, onDelete }: Props) {
   const { fmt, today } = useSettings();
   const { bill, next, endDate, remaining, monthly } = view;
-  const [confirming, setConfirming] = useState(false);
 
   const dot =
     next.status !== "upcoming"
@@ -57,38 +55,7 @@ export function BillRow({ view, onEdit, onDelete }: Props) {
         </div>
       </div>
 
-      <div className="-mr-1 flex shrink-0 items-center">
-        {confirming ? (
-          <>
-            <button
-              onClick={onDelete}
-              className="rounded-md px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
-            >
-              Delete
-            </button>
-            <button onClick={() => setConfirming(false)} className="rounded-md px-2 py-1.5 text-xs text-ink/50 hover:bg-ink/5">
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={onEdit}
-              aria-label={`Edit ${bill.name}`}
-              className="rounded-md p-2 text-ink/25 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setConfirming(true)}
-              aria-label={`Delete ${bill.name}`}
-              className="rounded-md p-2 text-ink/25 transition-colors hover:bg-red-50 hover:text-red-500"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </>
-        )}
-      </div>
+      <RowActions label={bill.name} onEdit={onEdit} onDelete={onDelete} />
     </div>
   );
 }

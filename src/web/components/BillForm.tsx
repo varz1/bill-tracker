@@ -1,20 +1,17 @@
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { endDate } from "../../shared/schedule";
 import { amountToInput, parseAmount } from "../../shared/format";
-import { CYCLES, type Cycle } from "../../shared/schedule";
+import { CYCLES, endDate, type Cycle } from "../../shared/schedule";
 import type { Bill, BillInput } from "../../shared/schemas";
 import { useSettings } from "../lib/settings";
 import { CYCLE_LABELS } from "../lib/labels";
+import { inputClass, labelClass, submitClass } from "./fields";
 
 interface Props {
   /** Present when editing an existing bill. */
   bill?: Bill;
   onSubmit(input: BillInput): Promise<void>;
 }
-
-const field =
-  "w-full rounded-md border border-ink/15 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40";
 
 export function BillForm({ bill, onSubmit }: Props) {
   const { settings, fmt, today } = useSettings();
@@ -68,7 +65,7 @@ export function BillForm({ bill, onSubmit }: Props) {
         aria-label="Name"
         maxLength={100}
         autoFocus
-        className={field}
+        className={inputClass}
       />
       <div className="flex gap-2">
         <input
@@ -80,13 +77,13 @@ export function BillForm({ bill, onSubmit }: Props) {
           min="0"
           placeholder={`Amount (${settings.currency})`}
           aria-label="Amount"
-          className={`${field} min-w-0 flex-1 font-mono tabular-nums`}
+          className={`${inputClass} min-w-0 flex-1 font-mono tabular-nums`}
         />
         <select
           value={cycle}
           onChange={(e) => setCycle(e.target.value as Cycle)}
           aria-label="Repeats"
-          className={`${field} w-auto bg-white`}
+          className={`${inputClass} w-auto bg-white`}
         >
           {CYCLES.map((c) => (
             <option key={c} value={c}>
@@ -97,11 +94,11 @@ export function BillForm({ bill, onSubmit }: Props) {
       </div>
       <div className="flex gap-2">
         <label className="flex-1">
-          <span className="mb-1 block text-xs text-ink/45">First payment</span>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={field} />
+          <span className={labelClass}>First payment</span>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputClass} />
         </label>
         <label className="w-32 shrink-0">
-          <span className="mb-1 block text-xs text-ink/45">Payments (optional)</span>
+          <span className={labelClass}>Payments (optional)</span>
           <input
             type="number"
             inputMode="numeric"
@@ -109,7 +106,7 @@ export function BillForm({ bill, onSubmit }: Props) {
             value={totalPayments}
             onChange={(e) => setTotalPayments(e.target.value)}
             placeholder="Ongoing"
-            className={`${field} font-mono tabular-nums`}
+            className={`${inputClass} font-mono tabular-nums`}
           />
         </label>
       </div>
@@ -122,7 +119,7 @@ export function BillForm({ bill, onSubmit }: Props) {
       <button
         type="submit"
         disabled={busy}
-        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md bg-ink py-3 text-sm font-medium text-paper transition-colors hover:bg-ink/90 disabled:opacity-60"
+        className={submitClass}
       >
         {!bill && <Plus className="h-4 w-4" />}
         {bill ? "Save changes" : "Add bill"}

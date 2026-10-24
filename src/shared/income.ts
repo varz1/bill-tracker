@@ -234,3 +234,36 @@ export function employerColors(names: Iterable<string>): Record<string, string> 
   const sorted = [...new Set(names)].sort((a, b) => a.localeCompare(b));
   return Object.fromEntries(sorted.map((name, i) => [name, PALETTE[i % PALETTE.length]]));
 }
+
+// ---- Everything the Income page shows ---------------------------------------
+
+export interface Overview {
+  incomeWeeks: IncomeWeek[];
+  /** Weeks up to and including the current one, so upcoming rostered weeks aren't charted. */
+  shiftWeeks: ShiftWeek[];
+  settledUntil: IsoDate;
+  stats: IncomeStats;
+  hours: HourStats;
+  /** All employers seen in payslips or shifts, sorted by name. */
+  employers: string[];
+  colors: Record<string, string>;
+}
+
+export function overview(income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): Overview {
+  const settled = settledUntil(income, shifts, today, weekStartsOn);
+  const weeks = incomeWeeks(income, weekStartsOn);
+  const stats = incomeStats(weeks, settled);
+  const currentWeek = weekStart(today, weekStartsOn);
+  const employers = [...new Set([...income.map((i) => i.employer), ...shifts.map((s) => s.employer)])].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  return {
+    incomeWeeks: weeks,
+    shiftWeeks: shiftWeeks(shifts, weekStartsOn).filter((w) => w.weekStart <= currentWeek),
+    settledUntil: settled,
+    stats,
+    hours: hourStats(shifts, income, stats, settled, today, weekStartsOn),
+    employers,
+    colors: employerColors(employers),
+  };
+}

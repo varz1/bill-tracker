@@ -1,11 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { SettingsPatchSchema, type Settings as SettingsValue } from "../../shared/schemas";
+import { inputClass, labelClass } from "../components/fields";
 import { useSettings } from "../lib/settings";
 
 const CURRENCIES = Intl.supportedValuesOf("currency");
-
-const input =
-  "w-full rounded-md border border-ink/15 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40";
 
 export default function Settings() {
   const { settings, update } = useSettings();
@@ -38,13 +36,13 @@ export default function Settings() {
   return (
     <form onSubmit={save} className="space-y-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm">
       <label className="block">
-        <span className="mb-1 block text-xs text-ink/45">Currency</span>
+        <span className={labelClass}>Currency</span>
         <input
           list="currencies"
           value={draft.currency}
           onChange={(e) => set("currency", e.target.value.toUpperCase())}
           maxLength={3}
-          className={`${input} font-mono`}
+          className={`${inputClass} font-mono`}
         />
         <datalist id="currencies">
           {CURRENCIES.map((c) => (
@@ -57,11 +55,11 @@ export default function Settings() {
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-xs text-ink/45">Week starts on</span>
+        <span className={labelClass}>Week starts on</span>
         <select
           value={draft.weekStartsOn}
           onChange={(e) => set("weekStartsOn", Number(e.target.value) as 0 | 1)}
-          className={`${input} bg-white`}
+          className={`${inputClass} bg-white`}
         >
           <option value={1}>Monday</option>
           <option value={0}>Sunday</option>
