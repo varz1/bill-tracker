@@ -3,7 +3,10 @@
 //
 //   npm run seed                        # http://localhost:5173
 //   npm run seed -- https://my-app.workers.dev
-//   npm run seed -- <url> --force       # add even if the instance already has data
+//   npm run seed -- <url> --reset       # delete ALL existing bills, shifts and payslips first, then seed
+//
+// Without --reset the script refuses to touch an instance that already has data, so demo records never
+// pile up on top of each other.
 //
 // The pay data models a full-time supermarket employee: usually five paid 7.6-hour shifts a week (38 hours),
 // weekend penalty rates, weekly pay on the Wednesday after each Monday-Sunday period, Australian
@@ -11,7 +14,7 @@
 // so the charts and timeline always have something to show.
 
 const args = process.argv.slice(2);
-const force = args.includes("--force");
+const reset = args.includes("--reset");
 const base = (args.find((a) => !a.startsWith("--")) ?? "http://localhost:5173").replace(/\/$/, "");
 
 const EMPLOYER = "Greenfield Supermarket";
@@ -132,11 +135,18 @@ async function call(path, init) {
 const post = async (path, body) => (await call(path, { method: "POST", body: JSON.stringify(body) })).item;
 
 try {
-  const existing = await Promise.all(["bills", "shifts", "income"].map((r) => call(`/api/${r}`)));
+  const kinds = ["bills", "shifts", "income"];
+  const existing = await Promise.all(kinds.map((r) => call(`/api/${r}`)));
   const count = existing.reduce((n, r) => n + r.items.length, 0);
-  if (count > 0 && !force) {
-    console.error(`${base} already has ${count} records. Re-run with --force to add demo data anyway.`);
+  if (count > 0 && !reset) {
+    console.error(`${base} already has ${count} records. Re-run with --reset to replace them with demo data.`);
     process.exit(1);
+  }
+  if (count > 0) {
+    console.log(`Deleting ${count} existing records from ${base}...`);
+    for (const [i, kind] of kinds.entries()) {
+      for (const record of existing[i].items) await call(`/api/${kind}/${record.id}`, { method: "DELETE" });
+    }
   }
 
   const created = [];

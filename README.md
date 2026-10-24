@@ -19,7 +19,7 @@ Requires Node 24 (`.nvmrc`).
 ```sh
 npm ci
 npm run dev        # Vite + local Worker, KV simulated locally
-npm run seed       # fill the running dev server with demo data
+npm run seed       # fill the running dev server with demo data (--reset replaces existing data)
 npm test
 npm run typecheck
 ```
