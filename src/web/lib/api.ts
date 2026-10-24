@@ -1,4 +1,4 @@
-import type { Bill, BillInput, Settings } from "../../shared/schemas";
+import type { Bill, BillInput, Income, IncomeInput, Settings, Shift, ShiftInput } from "../../shared/schemas";
 
 export class ApiError extends Error {
   constructor(
@@ -22,7 +22,14 @@ async function request<T>(path: string, init: { method?: string; body?: unknown 
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-function resource<T, I>(base: string) {
+export interface Resource<T, I> {
+  list(): Promise<T[]>;
+  create(input: I): Promise<T>;
+  update(id: string, patch: Partial<I>): Promise<T>;
+  remove(id: string): Promise<void>;
+}
+
+function resource<T, I>(base: string): Resource<T, I> {
   return {
     list: async () => (await request<{ items: T[] }>(base)).items,
     create: async (input: I) => (await request<{ item: T }>(base, { method: "POST", body: input })).item,
@@ -34,6 +41,8 @@ function resource<T, I>(base: string) {
 
 export const api = {
   bills: resource<Bill, BillInput>("/api/bills"),
+  shifts: resource<Shift, ShiftInput>("/api/shifts"),
+  income: resource<Income, IncomeInput>("/api/income"),
   settings: {
     get: async () => (await request<{ settings: Settings }>("/api/settings")).settings,
     update: async (patch: Partial<Settings>) =>

@@ -1,0 +1,75 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Resource } from "./api";
+
+export type LoadStatus = "loading" | "ready" | "error";
+
+/**
+ * Loads a list of records once and keeps it in sync with the API.
+ * Edits and deletes apply instantly and roll back if the save fails.
+ */
+export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>) {
+  const [records, setRecords] = useState<T[]>([]);
+  const [status, setStatus] = useState<LoadStatus>("loading");
+  const [saveError, setSaveError] = useState(false);
+  // Latest list, so a failed save can restore exactly what was on screen before the edit.
+  const latest = useRef(records);
+  latest.current = records;
+
+  useEffect(() => {
+    let cancelled = false;
+    resource
+      .list()
+      .then((items) => {
+        if (cancelled) return;
+        setRecords(items);
+        setStatus("ready");
+      })
+      .catch(() => !cancelled && setStatus("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [resource]);
+
+  /** Applies `change` locally right away, then runs `save`; restores the previous list on failure. */
+  const optimistic = useCallback(async (change: (list: T[]) => T[], save: () => Promise<T | void>) => {
+    const previous = latest.current;
+    setRecords(change(previous));
+    setSaveError(false);
+    try {
+      const saved = await save();
+      if (saved) setRecords((current) => current.map((r) => (r.id === saved.id ? saved : r)));
+    } catch {
+      setRecords(previous);
+      setSaveError(true);
+    }
+  }, []);
+
+  /** Creates a record. Rejects on failure so the calling form can show the error. */
+  const add = useCallback(
+    async (input: I) => {
+      const created = await resource.create(input);
+      setRecords((current) => [...current, created]);
+    },
+    [resource],
+  );
+
+  const update = useCallback(
+    (id: string, patch: Partial<I>) =>
+      optimistic(
+        (list) => list.map((r) => (r.id === id ? ({ ...r, ...patch } as T) : r)),
+        () => resource.update(id, patch),
+      ),
+    [optimistic, resource],
+  );
+
+  const remove = useCallback(
+    (id: string) =>
+      optimistic(
+        (list) => list.filter((r) => r.id !== id),
+        () => resource.remove(id),
+      ),
+    [optimistic, resource],
+  );
+
+  return { records, status, saveError, add, update, remove };
+}
