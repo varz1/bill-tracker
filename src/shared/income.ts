@@ -1,5 +1,5 @@
 import { addDays, diffDays, type IsoDate } from "./dates";
-import type { Income, Shift } from "./schemas";
+import type { Employer, Income, Shift } from "./schemas";
 
 export type WeekStart = 0 | 1;
 
@@ -50,7 +50,7 @@ export function incomeWeeks(income: Income[], weekStartsOn: WeekStart): IncomeWe
   for (const slip of income) {
     const start = weekStart(slip.periodEnd, weekStartsOn);
     const week = buckets.get(start) ?? { weekStart: start, byEmployer: {}, gross: 0, net: 0, tax: 0 };
-    const emp = (week.byEmployer[slip.employer] ??= { gross: 0, net: 0, tax: 0, multiWeek: false });
+    const emp = (week.byEmployer[slip.employerId] ??= { gross: 0, net: 0, tax: 0, multiWeek: false });
     emp.gross += slip.gross;
     emp.net += slip.net;
     emp.tax += slip.tax;
@@ -70,7 +70,7 @@ export function incomeWeeks(income: Income[], weekStartsOn: WeekStart): IncomeWe
 
 export interface ShiftWeek {
   weekStart: IsoDate;
-  /** Paid hours per employer. */
+  /** Paid hours per employer id. */
   byEmployer: Record<string, number>;
   total: number;
 }
@@ -81,7 +81,7 @@ export function shiftWeeks(shifts: Shift[], weekStartsOn: WeekStart): ShiftWeek[
   for (const shift of shifts) {
     const start = weekStart(shift.date, weekStartsOn);
     const week = buckets.get(start) ?? { weekStart: start, byEmployer: {}, total: 0 };
-    week.byEmployer[shift.employer] = (week.byEmployer[shift.employer] ?? 0) + shift.hours;
+    week.byEmployer[shift.employerId] = (week.byEmployer[shift.employerId] ?? 0) + shift.hours;
     week.total += shift.hours;
     buckets.set(start, week);
   }
@@ -118,15 +118,15 @@ export function settledUntil(income: Income[], shifts: Shift[], today: IsoDate, 
   const lastPaidEnd: Record<string, IsoDate> = {};
   for (const slip of income) {
     if (slip.payDate > today) continue;
-    if (!lastPaidEnd[slip.employer] || slip.periodEnd > lastPaidEnd[slip.employer]) {
-      lastPaidEnd[slip.employer] = slip.periodEnd;
+    if (!lastPaidEnd[slip.employerId] || slip.periodEnd > lastPaidEnd[slip.employerId]) {
+      lastPaidEnd[slip.employerId] = slip.periodEnd;
     }
   }
 
   let cutoff = lastFinishedDay(today, weekStartsOn);
   for (const shift of shifts) {
     if (shift.date > cutoff) continue;
-    const paidEnd = lastPaidEnd[shift.employer];
+    const paidEnd = lastPaidEnd[shift.employerId];
     if (paidEnd && shift.date <= paidEnd) continue;
     // Worked but not yet paid: nothing from the start of that week onward is settled.
     const owedFrom = addDays(weekStart(shift.date, weekStartsOn), -1);
@@ -193,11 +193,11 @@ export function hourStats(
   for (const shift of shifts) {
     if (shift.date > finished) continue;
     totalHours += shift.hours;
-    hoursByEmployer[shift.employer] = (hoursByEmployer[shift.employer] ?? 0) + shift.hours;
+    hoursByEmployer[shift.employerId] = (hoursByEmployer[shift.employerId] ?? 0) + shift.hours;
     const covered = shift.date <= settled && income.some(
-      (s) => s.employer === shift.employer && shift.date >= s.periodStart && shift.date <= s.periodEnd,
+      (s) => s.employerId === shift.employerId && shift.date >= s.periodStart && shift.date <= s.periodEnd,
     );
-    if (covered) billable[shift.employer] = (billable[shift.employer] ?? 0) + shift.hours;
+    if (covered) billable[shift.employerId] = (billable[shift.employerId] ?? 0) + shift.hours;
   }
 
   const rateByEmployer: Record<string, number | null> = {};
@@ -225,16 +225,6 @@ export function hourStats(
   };
 }
 
-// ---- Presentation helpers --------------------------------------------------
-
-const PALETTE = ["#2a78d6", "#f08a24", "#2a9d8f", "#c8102e", "#8e5bd0", "#a3902a"];
-
-/** A stable colour per employer: names are sorted, then take palette colours in order. */
-export function employerColors(names: Iterable<string>): Record<string, string> {
-  const sorted = [...new Set(names)].sort((a, b) => a.localeCompare(b));
-  return Object.fromEntries(sorted.map((name, i) => [name, PALETTE[i % PALETTE.length]]));
-}
-
 // ---- Everything the Income page shows ---------------------------------------
 
 export interface Overview {
@@ -244,26 +234,27 @@ export interface Overview {
   settledUntil: IsoDate;
   stats: IncomeStats;
   hours: HourStats;
-  /** All employers seen in payslips or shifts, sorted by name. */
-  employers: string[];
-  colors: Record<string, string>;
+  /** Employers sorted by name; charts draw and stack them in this order. */
+  employers: Employer[];
 }
 
-export function overview(income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): Overview {
+export function overview(
+  employers: Employer[],
+  income: Income[],
+  shifts: Shift[],
+  today: IsoDate,
+  weekStartsOn: WeekStart,
+): Overview {
   const settled = settledUntil(income, shifts, today, weekStartsOn);
   const weeks = incomeWeeks(income, weekStartsOn);
   const stats = incomeStats(weeks, settled);
   const currentWeek = weekStart(today, weekStartsOn);
-  const employers = [...new Set([...income.map((i) => i.employer), ...shifts.map((s) => s.employer)])].sort((a, b) =>
-    a.localeCompare(b),
-  );
   return {
     incomeWeeks: weeks,
     shiftWeeks: shiftWeeks(shifts, weekStartsOn).filter((w) => w.weekStart <= currentWeek),
     settledUntil: settled,
     stats,
     hours: hourStats(shifts, income, stats, settled, today, weekStartsOn),
-    employers,
-    colors: employerColors(employers),
+    employers: [...employers].sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

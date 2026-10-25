@@ -35,12 +35,12 @@ describe("BillInputSchema", () => {
 
 describe("ShiftInputSchema", () => {
   it("does not let the client choose the source", () => {
-    const parsed = ShiftInputSchema.parse({ date: "2026-05-05", employer: "Cafe", hours: 4, source: "calendar" });
+    const parsed = ShiftInputSchema.parse({ date: "2026-05-05", employerId: "E1", hours: 4, source: "calendar" });
     expect(parsed).not.toHaveProperty("source");
   });
 
   it("validates HH:mm times and hour range", () => {
-    const base = { date: "2026-05-05", employer: "Cafe", hours: 4 };
+    const base = { date: "2026-05-05", employerId: "E1", hours: 4 };
     expect(ShiftInputSchema.safeParse({ ...base, start: "09:00", end: "13:00" }).success).toBe(true);
     expect(ShiftInputSchema.safeParse({ ...base, start: "9:00" }).success).toBe(false);
     expect(ShiftInputSchema.safeParse({ ...base, hours: 0 }).success).toBe(false);

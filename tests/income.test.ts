@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  employerColors,
   hoursBetween,
   hourStats,
   incomeStats,
@@ -11,14 +10,14 @@ import {
   shiftWeeks,
   weekStart,
 } from "../src/shared/income";
-import type { Income, Shift } from "../src/shared/schemas";
+import type { Employer, Income, Shift } from "../src/shared/schemas";
 
 const META = { createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
 
 let n = 0;
 const slip = (over: Partial<Income>): Income => ({
   id: `I${n++}`,
-  employer: "Shop",
+  employerId: "shop",
   payDate: "2026-10-07",
   periodStart: "2026-09-28",
   periodEnd: "2026-10-04",
@@ -29,10 +28,10 @@ const slip = (over: Partial<Income>): Income => ({
   ...META,
   ...over,
 });
-const shift = (date: string, hours: number, employer = "Shop"): Shift => ({
+const shift = (date: string, hours: number, employerId = "shop"): Shift => ({
   id: `S${n++}`,
   date,
-  employer,
+  employerId,
   hours,
   source: "manual",
   ...META,
@@ -88,21 +87,21 @@ describe("incomeWeeks", () => {
     const weeks = incomeWeeks([slip({ periodStart: "2026-09-21", periodEnd: "2026-10-04" })], 1);
     expect(weeks).toHaveLength(1);
     expect(weeks[0].weekStart).toBe("2026-09-28");
-    expect(weeks[0].byEmployer.Shop.multiWeek).toBe(true);
+    expect(weeks[0].byEmployer.shop.multiWeek).toBe(true);
   });
 
   it("adds up several employers in one week", () => {
-    const [week] = incomeWeeks([slip({ employer: "A", gross: 100 }), slip({ employer: "B", gross: 250 })], 1);
+    const [week] = incomeWeeks([slip({ employerId: "a", gross: 100 }), slip({ employerId: "b", gross: 250 })], 1);
     expect(week.gross).toBe(350);
-    expect(Object.keys(week.byEmployer).sort()).toEqual(["A", "B"]);
+    expect(Object.keys(week.byEmployer).sort()).toEqual(["a", "b"]);
   });
 });
 
 describe("shiftWeeks", () => {
   it("sums hours per employer per week", () => {
-    const weeks = shiftWeeks([shift("2026-10-19", 7.6), shift("2026-10-20", 7.6), shift("2026-10-21", 4, "Other")], 1);
+    const weeks = shiftWeeks([shift("2026-10-19", 7.6), shift("2026-10-20", 7.6), shift("2026-10-21", 4, "other")], 1);
     expect(weeks).toHaveLength(1);
-    expect(weeks[0].byEmployer.Shop).toBeCloseTo(15.2);
+    expect(weeks[0].byEmployer.shop).toBeCloseTo(15.2);
     expect(weeks[0].total).toBeCloseTo(19.2);
   });
 });
@@ -149,7 +148,7 @@ describe("incomeStats", () => {
   it("totals only the settled weeks", () => {
     const stats = incomeStats(weeks, "2026-10-11");
     expect(stats).toMatchObject({ weeks: 2, gross: 220000, net: 176000, tax: 44000, avgNet: 88000 });
-    expect(stats.grossByEmployer).toEqual({ Shop: 220000 });
+    expect(stats.grossByEmployer).toEqual({ shop: 220000 });
   });
 
   it("has no average before anything is settled", () => {
@@ -181,7 +180,7 @@ describe("hourStats", () => {
   it("divides gross by only the hours that payslips cover", () => {
     // 2 payslips of $1,140 over 76 paid hours -> $30/h. The unpaid third week must not dilute it.
     expect(hours.avgRate).toBe(3000);
-    expect(hours.rateByEmployer.Shop).toBe(3000);
+    expect(hours.rateByEmployer.shop).toBe(3000);
   });
 
   it("has no rate while no payslip covers any worked hour", () => {
@@ -190,37 +189,35 @@ describe("hourStats", () => {
   });
 });
 
-describe("employerColors", () => {
-  it("assigns palette colours by sorted name, ignoring input order and duplicates", () => {
-    const a = employerColors(["Zeta", "Alpha", "Zeta"]);
-    const b = employerColors(["Alpha", "Zeta"]);
-    expect(a).toEqual(b);
-    expect(a.Alpha).not.toBe(a.Zeta);
-  });
-
-  it("wraps around when there are more employers than colours", () => {
-    const colors = employerColors(Array.from({ length: 8 }, (_, i) => `E${i}`));
-    expect(Object.keys(colors)).toHaveLength(8);
-  });
-});
-
 describe("overview", () => {
+  const employer = (id: string, name: string): Employer => ({
+    id,
+    name,
+    contract: "casual",
+    sync: "manual",
+    color: "#2a78d6",
+    ...META,
+  });
+  const SHOP = employer("shop", "Shop");
+  const CAFE = employer("cafe", "Cafe");
+
   it("is empty and safe with no data", () => {
-    const o = overview([], [], TODAY, 1);
+    const o = overview([], [], [], TODAY, 1);
     expect(o.incomeWeeks).toEqual([]);
     expect(o.employers).toEqual([]);
     expect(o.stats.avgNet).toBeNull();
     expect(o.hours.avgRate).toBeNull();
   });
 
-  it("lists employers from both payslips and shifts, and leaves future weeks out of the hours chart", () => {
+  it("sorts employers by name and leaves future weeks out of the hours chart", () => {
     const o = overview(
-      [slip({ employer: "Shop" })],
-      [shift("2026-10-05", 8, "Cafe"), shift("2026-10-22", 8, "Cafe"), shift("2026-10-29", 8, "Cafe")],
+      [SHOP, CAFE],
+      [slip({ employerId: "shop" })],
+      [shift("2026-10-05", 8, "cafe"), shift("2026-10-22", 8, "cafe"), shift("2026-10-29", 8, "cafe")],
       TODAY,
       1,
     );
-    expect(o.employers).toEqual(["Cafe", "Shop"]);
+    expect(o.employers.map((e) => e.name)).toEqual(["Cafe", "Shop"]);
     expect(o.shiftWeeks.at(-1)?.weekStart).toBe("2026-10-19"); // Oct 26 week is in the future
   });
 });

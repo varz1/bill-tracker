@@ -127,34 +127,104 @@ describe("bills CRUD", () => {
   });
 });
 
+const createEmployer = async (body: Record<string, unknown> = {}) => {
+  const res = await call("/api/employers", {
+    method: "POST",
+    body: { name: "Cafe", contract: "casual", sync: "manual", ...body },
+  });
+  return { res, item: ((await res.json()) as { item: Item }).item };
+};
+
+describe("employers", () => {
+  it("creates an employer and assigns the first free colour", async () => {
+    const { res, item } = await createEmployer();
+    expect(res.status).toBe(201);
+    expect(item).toMatchObject({ name: "Cafe", contract: "casual", sync: "manual", color: "#2a78d6" });
+    const second = await createEmployer({ name: "Shop" });
+    expect(second.item.color).toBe("#f08a24");
+  });
+
+  it("ignores a client-supplied colour", async () => {
+    const { item } = await createEmployer({ color: "#000000" });
+    expect(item.color).toBe("#2a78d6");
+  });
+
+  it("rejects duplicate names ignoring case, on create and rename", async () => {
+    await createEmployer({ name: "Cafe" });
+    expect((await createEmployer({ name: "  cafe " })).res.status).toBe(409);
+    const shop = await createEmployer({ name: "Shop" });
+    const rename = await call(`/api/employers/${shop.item.id}`, { method: "PATCH", body: { name: "CAFE" } });
+    expect(rename.status).toBe(409);
+    const same = await call(`/api/employers/${shop.item.id}`, { method: "PATCH", body: { name: "Shop", contract: "full-time" } });
+    expect(same.status).toBe(200);
+  });
+
+  it("rejects an unknown contract type", async () => {
+    expect((await createEmployer({ contract: "permanent" })).res.status).toBe(400);
+  });
+
+  it("refuses to delete an employer that still has shifts or payslips", async () => {
+    const { item: employer } = await createEmployer();
+    const shift = await call("/api/shifts", {
+      method: "POST",
+      body: { date: "2026-05-05", employerId: employer.id, hours: 4 },
+    });
+    const refused = await call(`/api/employers/${employer.id}`, { method: "DELETE" });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: "employer_in_use", shiftCount: 1, payslipCount: 0 });
+
+    const { item } = (await shift.json()) as { item: Item };
+    await call(`/api/shifts/${item.id}`, { method: "DELETE" });
+    expect((await call(`/api/employers/${employer.id}`, { method: "DELETE" })).status).toBe(204);
+  });
+});
+
 describe("shifts", () => {
   it("always creates manual shifts, ignoring a client-supplied source", async () => {
+    const { item: employer } = await createEmployer();
     const res = await call("/api/shifts", {
       method: "POST",
-      body: { date: "2026-05-05", employer: "Cafe", hours: 4, start: "11:00", end: "15:00", source: "calendar" },
+      body: { date: "2026-05-05", employerId: employer.id, hours: 4, start: "11:00", end: "15:00", source: "calendar" },
     });
     expect(res.status).toBe(201);
     const { item } = (await res.json()) as { item: { source: string; calendarUid?: string } };
     expect(item.source).toBe("manual");
     expect(item.calendarUid).toBeUndefined();
   });
+
+  it("rejects a shift for an employer that doesn't exist, on create and update", async () => {
+    const missing = await call("/api/shifts", { method: "POST", body: { date: "2026-05-05", employerId: "NOPE", hours: 4 } });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: "unknown_employer" });
+
+    const { item: employer } = await createEmployer();
+    const created = await call("/api/shifts", { method: "POST", body: { date: "2026-05-05", employerId: employer.id, hours: 4 } });
+    const { item } = (await created.json()) as { item: Item };
+    expect((await call(`/api/shifts/${item.id}`, { method: "PATCH", body: { employerId: "NOPE" } })).status).toBe(400);
+  });
 });
 
 describe("income", () => {
+  const payslip = (employerId: string) => ({
+    employerId,
+    payDate: "2026-05-06",
+    periodStart: "2026-04-27",
+    periodEnd: "2026-05-03",
+    gross: 20352,
+    tax: 3000,
+    net: 17352,
+    super: 2442,
+  });
+
   it("stores a payslip in integer cents", async () => {
-    const payslip = {
-      employer: "Cafe",
-      payDate: "2026-05-06",
-      periodStart: "2026-04-27",
-      periodEnd: "2026-05-03",
-      gross: 20352,
-      tax: 3000,
-      net: 17352,
-      super: 2442,
-    };
-    const res = await call("/api/income", { method: "POST", body: payslip });
+    const { item: employer } = await createEmployer();
+    const res = await call("/api/income", { method: "POST", body: payslip(employer.id) });
     expect(res.status).toBe(201);
-    expect(((await res.json()) as { item: unknown }).item).toMatchObject(payslip);
+    expect(((await res.json()) as { item: unknown }).item).toMatchObject(payslip(employer.id));
+  });
+
+  it("rejects a payslip for an employer that doesn't exist", async () => {
+    expect((await call("/api/income", { method: "POST", body: payslip("NOPE") })).status).toBe(400);
   });
 });
 

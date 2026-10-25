@@ -33,12 +33,31 @@ export const BillPatchSchema = BillInputSchema.partial();
 export type Bill = z.infer<typeof BillSchema>;
 export type BillInput = z.infer<typeof BillInputSchema>;
 
+// ---- Employers -------------------------------------------------------------
+
+export const CONTRACTS = ["full-time", "part-time", "casual"] as const;
+/** How an employer's shifts get into the app. "calendar" is reserved for the planned calendar sync. */
+export const SYNC_MODES = ["manual", "calendar"] as const;
+
+export const EmployerSchema = z.object({
+  ...meta,
+  name: text,
+  contract: z.enum(CONTRACTS),
+  sync: z.enum(SYNC_MODES),
+  /** Chart colour, chosen by the server when the employer is created so it never changes afterwards. */
+  color: z.string().regex(/^#[0-9a-f]{6}$/i),
+});
+export const EmployerInputSchema = EmployerSchema.pick({ name: true, contract: true, sync: true });
+export const EmployerPatchSchema = EmployerInputSchema.partial();
+export type Employer = z.infer<typeof EmployerSchema>;
+export type EmployerInput = z.infer<typeof EmployerInputSchema>;
+
 // ---- Shifts ----------------------------------------------------------------
 
 export const ShiftSchema = z.object({
   ...meta,
   date: isoDate,
-  employer: text,
+  employerId: z.string().min(1).max(64),
   hours: z.number().positive().max(24),
   start: time.optional(),
   end: time.optional(),
@@ -55,7 +74,7 @@ export type ShiftInput = z.infer<typeof ShiftInputSchema>;
 
 export const IncomeSchema = z.object({
   ...meta,
-  employer: text,
+  employerId: z.string().min(1).max(64),
   payDate: isoDate,
   periodStart: isoDate,
   periodEnd: isoDate,

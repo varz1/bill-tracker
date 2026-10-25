@@ -18,7 +18,11 @@ interface CrudOptions<T extends Meta, I, P> {
   inputSchema: z.ZodType<I>;
   patchSchema: z.ZodType<P>;
   /** Turns a validated request body into a full record. */
-  create(input: I, meta: Meta): T;
+  create(input: I, meta: Meta, c: Context<AppEnv>): T | Promise<T>;
+  /** Extra validation before a record is saved (create or update); return a response to reject it. */
+  check?(c: Context<AppEnv>, record: T): Promise<Response | null>;
+  /** Called before a record is deleted; return a response to refuse. */
+  beforeDelete?(c: Context<AppEnv>, id: string): Promise<Response | null>;
 }
 
 /** Reads and validates a JSON body. Returns a 400 response on failure. */
@@ -52,7 +56,9 @@ export function crudRoutes<T extends Meta, I, P extends object>(opts: CrudOption
     const body = await readBody(c, opts.inputSchema);
     if (body instanceof Response) return body;
     const now = new Date().toISOString();
-    const item = opts.create(body, { id: newId(), createdAt: now, updatedAt: now });
+    const item = await opts.create(body, { id: newId(), createdAt: now, updatedAt: now }, c);
+    const rejected = await opts.check?.(c, item);
+    if (rejected) return rejected;
     await store(c).put(item);
     return c.json({ item }, 201);
   });
@@ -70,11 +76,15 @@ export function crudRoutes<T extends Meta, I, P extends object>(opts: CrudOption
       updatedAt: new Date().toISOString(),
     });
     if (!merged.success) return c.json({ error: "invalid_body", issues: merged.error.issues }, 400);
+    const rejected = await opts.check?.(c, merged.data);
+    if (rejected) return rejected;
     await store(c).put(merged.data);
     return c.json({ item: merged.data });
   });
 
   app.delete("/:id", async (c) => {
+    const refused = await opts.beforeDelete?.(c, c.req.param("id"));
+    if (refused) return refused;
     await store(c).remove(c.req.param("id"));
     return c.body(null, 204);
   });
