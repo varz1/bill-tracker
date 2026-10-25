@@ -130,7 +130,10 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
             </button>
           </span>
         ) : inUse ? (
-          <p className="text-xs text-ink/35">To delete this employer, first remove its payslips and shifts.</p>
+          <p className="text-xs text-ink/35">
+            {employer.name} has {mySlips.length} {mySlips.length === 1 ? "payslip" : "payslips"} and {myShifts.length}{" "}
+            {myShifts.length === 1 ? "shift" : "shifts"}. To delete it, remove those first.
+          </p>
         ) : (
           <button onClick={() => setConfirmingDelete(true)} className="rounded-md px-2 py-1.5 text-xs text-red-500 hover:bg-red-50">
             Delete employer

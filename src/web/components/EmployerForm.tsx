@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { CONTRACT_LABELS, SYNC_LABELS, sameName } from "../../shared/employers";
 import { CONTRACTS, type Employer, type EmployerInput } from "../../shared/schemas";
 import { ApiError } from "../lib/api";
-import { inputClass, labelClass, submitClass } from "./fields";
+import { hintClass, inputClass, labelClass, submitClass } from "./fields";
 
 interface Props {
   employer?: Employer;
@@ -41,6 +41,7 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
       <label className="block">
         <span className={labelClass}>Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus className={inputClass} />
+        {employer && <span className={hintClass}>Renaming updates this employer everywhere, including its payslips and shifts.</span>}
       </label>
       <label className="block">
         <span className={labelClass}>Contract</span>
@@ -51,6 +52,7 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
             </option>
           ))}
         </select>
+        <span className={hintClass}>A label only. It doesn't change any pay figures.</span>
       </label>
       <label className="block">
         <span className={labelClass}>Shifts</span>
@@ -60,6 +62,10 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
             {SYNC_LABELS.calendar} (coming soon)
           </option>
         </select>
+        <span className={hintClass}>
+          Calendar sync is the recommended way: your roster keeps shifts up to date automatically, with nothing to type. It is
+          coming soon. Until then, enter shifts by hand on this employer's page.
+        </span>
       </label>
       {error && (
         <p role="alert" className="text-xs text-red-600">
