@@ -22,8 +22,8 @@ const WEEKS_OF_HISTORY = 14;
 const SUPER_RATE = 0.12;
 
 const JOBS = {
-  main: { name: "Greenfield Supermarket", contract: "full-time", rate: 31.0, paidHours: 7.6, payLag: 3 },
-  side: { name: "Harbour Café", contract: "casual", rate: 34.5, paidHours: 5.0, payLag: 4 },
+  main: { name: "Greenfield Supermarket", contract: "full-time", color: "#2a78d6", rate: 31.0, paidHours: 7.6, payLag: 3 },
+  side: { name: "Harbour Café", contract: "casual", color: "#f08a24", rate: 34.5, paidHours: 5.0, payLag: 4 },
 };
 
 // ---- date helpers (local calendar dates, matching what the app shows as "today") ----
@@ -181,8 +181,9 @@ try {
   }
 
   const employerIds = {};
-  for (const [job, { name, contract }] of Object.entries(JOBS)) {
-    employerIds[job] = (await post("/api/employers", { name, contract, sync: "manual" })).id;
+  // Colours are given explicitly: KV listings can lag behind a write, so the server could hand both the same one.
+  for (const [job, { name, contract, color }] of Object.entries(JOBS)) {
+    employerIds[job] = (await post("/api/employers", { name, contract, sync: "manual", color })).id;
   }
 
   const created = [];
