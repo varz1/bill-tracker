@@ -13,8 +13,8 @@ Track recurring bills, shifts and income in one place. Single currency, single u
 
 **Income**
 - Design for Casual and Part-time Worker
-- Record payslips (gross, tax, net, super) and shifts (date, paid hours, optional start and end times).
-- Charts of gross pay by week, split by employer, and paid hours by week.
+- Keep one record per employer (name, full-time, part-time or casual). Open an employer to add its payslips (gross, tax, net, super) and shifts (date, paid hours, optional start and end times).
+- The Income page combines every employer: charts of gross pay by week, split by employer, and paid hours by week.
 - Stats: total gross, net and tax, average net per week, average hours per week, average hourly rate (gross ÷ paid hours).
 - Averages only use weeks that are fully paid, so shifts still waiting on a payslip don't drag them down. A fortnightly payslip counts in its second week.
 

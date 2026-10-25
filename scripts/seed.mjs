@@ -3,25 +3,28 @@
 //
 //   npm run seed                        # http://localhost:5173
 //   npm run seed -- https://my-app.workers.dev
-//   npm run seed -- <url> --reset       # delete ALL existing bills, shifts and payslips first, then seed
+//   npm run seed -- <url> --reset       # delete ALL existing bills, employers, shifts and payslips first, then seed
 //
 // Without --reset the script refuses to touch an instance that already has data, so demo records never
 // pile up on top of each other.
 //
-// The pay data models a full-time supermarket employee: usually five paid 7.6-hour shifts a week (38 hours),
-// weekend penalty rates, weekly pay on the Wednesday after each Monday-Sunday period, Australian
-// tax withholding estimated from the resident rates, and 12% super. Everything is relative to today
-// so the charts and timeline always have something to show.
+// The pay data models two jobs. The main one is a full-time supermarket job: usually five paid 7.6-hour
+// shifts a week (38 hours), weekend penalty rates, weekly pay on the Wednesday after each Monday-Sunday
+// period, Australian tax withholding estimated from the resident rates, and 12% super. The side job is a
+// casual café job: two 5-hour shifts a week on days the main job is off, paid on the Thursday after, taxed
+// without the tax-free threshold. Everything is relative to today so the charts and timeline have data.
 
 const args = process.argv.slice(2);
 const reset = args.includes("--reset");
 const base = (args.find((a) => !a.startsWith("--")) ?? "http://localhost:5173").replace(/\/$/, "");
 
-const EMPLOYER = "Greenfield Supermarket";
-const HOURLY_RATE = 31.0; // dollars
-const PAID_HOURS = 7.6; // per shift, after a 30-minute unpaid break
 const WEEKS_OF_HISTORY = 14;
 const SUPER_RATE = 0.12;
+
+const JOBS = {
+  main: { name: "Greenfield Supermarket", contract: "full-time", rate: 31.0, paidHours: 7.6, payLag: 3 },
+  side: { name: "Harbour Café", contract: "casual", rate: 34.5, paidHours: 5.0, payLag: 4 },
+};
 
 // ---- date helpers (local calendar dates, matching what the app shows as "today") ----
 
@@ -74,8 +77,8 @@ function endTime(start) {
   return `${pad(Math.floor(total / 60) % 24)}:${pad(total % 60)}`;
 }
 
-/** Shifts for the week starting at `monday`: the API body plus the pay it earns in dollars. */
-function shiftsForWeek(monday, weekIndex) {
+/** Main-job shifts for the week starting at `monday`: the API body plus the pay it earns in dollars. */
+function mainShiftsForWeek(monday, weekIndex) {
   const roster = [...ROSTERS[weekIndex % 2]];
   // Now and then a day off, or an extra shift on a day that's normally free, so hours aren't a flat 38.
   if (weekIndex % 7 === 3) roster.pop();
@@ -84,10 +87,25 @@ function shiftsForWeek(monday, weekIndex) {
     const date = addDays(monday, offset);
     const start = START_TIMES[(weekIndex + i) % START_TIMES.length];
     return {
-      body: { date: ymd(date), employer: EMPLOYER, hours: PAID_HOURS, start, end: endTime(start) },
-      pay: PAID_HOURS * HOURLY_RATE * (PENALTY[date.getDay()] ?? 1),
+      body: { date: ymd(date), hours: JOBS.main.paidHours, start, end: endTime(start) },
+      pay: JOBS.main.paidHours * JOBS.main.rate * (PENALTY[date.getDay()] ?? 1),
     };
   });
+}
+
+/** Side-job shifts: two a week, on the first days (preferring weekends) when the main job is off. */
+function sideShiftsForWeek(monday, weekIndex, busyOffsets) {
+  const preferred = weekIndex % 2 === 0 ? [6, 2, 0, 3] : [0, 3, 6, 2];
+  return preferred
+    .filter((offset) => !busyOffsets.includes(offset))
+    .slice(0, 2)
+    .map((offset) => {
+      const date = addDays(monday, offset);
+      return {
+        body: { date: ymd(date), hours: JOBS.side.paidHours, start: "09:00", end: "14:30" }, // 5.5h on site, 30 min unpaid
+        pay: JOBS.side.paidHours * JOBS.side.rate * (PENALTY[date.getDay()] ?? 1),
+      };
+    });
 }
 
 /** Weekly withholding estimate for a resident, in whole dollars (income tax plus 2% Medicare). */
@@ -97,31 +115,43 @@ function weeklyTax(weeklyGross) {
   return Math.round((incomeTax + annual * 0.02) / 52);
 }
 
+// Each entry is tagged with its job; the employer id is filled in once the employers exist.
 const shifts = [];
 const payslips = [];
+
+function addPayslip(job, monday, weekShifts, tax) {
+  const periodEnd = addDays(monday, 6);
+  const payDate = addDays(periodEnd, JOBS[job].payLag);
+  // Weeks that haven't finished aren't paid yet, and neither is a finished week until its pay day arrives.
+  if (payDate > today) return;
+  const gross = Math.round(weekShifts.reduce((sum, s) => sum + s.pay, 0) * 100); // cents
+  const withheld = tax(gross);
+  payslips.push({
+    job,
+    body: {
+      payDate: ymd(payDate),
+      periodStart: ymd(monday),
+      periodEnd: ymd(periodEnd),
+      gross,
+      tax: withheld,
+      net: gross - withheld,
+      super: Math.round(gross * SUPER_RATE),
+    },
+  });
+}
+
 // From the oldest week to next week's roster, which is still in the future.
 for (let k = WEEKS_OF_HISTORY; k >= -1; k--) {
   const monday = addDays(thisMonday, -7 * k);
-  const weekShifts = shiftsForWeek(monday, k + 1);
-  shifts.push(...weekShifts.map((s) => s.body));
+  const mainShifts = mainShiftsForWeek(monday, k + 1);
+  const busy = mainShifts.map((s) => (new Date(`${s.body.date}T00:00:00`).getDay() + 6) % 7);
+  const sideShifts = sideShiftsForWeek(monday, k + 1, busy);
 
-  const periodEnd = addDays(monday, 6);
-  const payDate = addDays(periodEnd, 3); // the Wednesday after
-  // The current and future weeks aren't paid yet, and neither is last week until its pay day arrives.
-  if (k < 1 || payDate > today) continue;
-
-  const gross = Math.round(weekShifts.reduce((sum, s) => sum + s.pay, 0) * 100); // cents
-  const tax = weeklyTax(gross / 100) * 100;
-  payslips.push({
-    employer: EMPLOYER,
-    payDate: ymd(payDate),
-    periodStart: ymd(monday),
-    periodEnd: ymd(periodEnd),
-    gross,
-    tax,
-    net: gross - tax,
-    super: Math.round(gross * SUPER_RATE),
-  });
+  shifts.push(...mainShifts.map((s) => ({ job: "main", body: s.body })), ...sideShifts.map((s) => ({ job: "side", body: s.body })));
+  if (k < 1) continue;
+  addPayslip("main", monday, mainShifts, (gross) => weeklyTax(gross / 100) * 100);
+  // No tax-free threshold on a second job: 16% plus 2% Medicare.
+  addPayslip("side", monday, sideShifts, (gross) => Math.round((gross * 0.18) / 100) * 100);
 }
 
 // ---- upload ----
@@ -135,7 +165,8 @@ async function call(path, init) {
 const post = async (path, body) => (await call(path, { method: "POST", body: JSON.stringify(body) })).item;
 
 try {
-  const kinds = ["bills", "shifts", "income"];
+  // Shifts and payslips go first: an employer that still has records can't be deleted.
+  const kinds = ["shifts", "income", "employers", "bills"];
   const existing = await Promise.all(kinds.map((r) => call(`/api/${r}`)));
   const count = existing.reduce((n, r) => n + r.items.length, 0);
   if (count > 0 && !reset) {
@@ -149,6 +180,11 @@ try {
     }
   }
 
+  const employerIds = {};
+  for (const [job, { name, contract }] of Object.entries(JOBS)) {
+    employerIds[job] = (await post("/api/employers", { name, contract, sync: "manual" })).id;
+  }
+
   const created = [];
   for (const bill of bills) created.push(await post("/api/bills", bill));
   // Mark the next upcoming Rent payment as paid early so the "paid" state shows up.
@@ -157,10 +193,12 @@ try {
   const nextRent = [...Array(60).keys()].map((n) => ymd(addDays(rentStart, 7 * n))).find((d) => d >= ymd(today));
   await call(`/api/bills/${rent.id}`, { method: "PATCH", body: JSON.stringify({ paidAhead: [nextRent] }) });
 
-  for (const shift of shifts) await post("/api/shifts", shift);
-  for (const slip of payslips) await post("/api/income", slip);
+  for (const { job, body } of shifts) await post("/api/shifts", { ...body, employerId: employerIds[job] });
+  for (const { job, body } of payslips) await post("/api/income", { ...body, employerId: employerIds[job] });
 
-  console.log(`Seeded ${bills.length} bills, ${shifts.length} shifts and ${payslips.length} payslips into ${base}`);
+  console.log(
+    `Seeded ${Object.keys(JOBS).length} employers, ${bills.length} bills, ${shifts.length} shifts and ${payslips.length} payslips into ${base}`,
+  );
 } catch (err) {
   console.error(err.message);
   process.exit(1);
