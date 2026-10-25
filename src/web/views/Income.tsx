@@ -72,22 +72,6 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
         </div>
       )}
 
-      {hasPay || hasShifts ? (
-        <>
-          <IncomeStats overview={data} />
-          {hasPay && <IncomeChart weeks={data.incomeWeeks} settledUntil={data.settledUntil} employers={data.employers} />}
-          {hasShifts && <HoursChart weeks={data.shiftWeeks} employers={data.employers} />}
-        </>
-      ) : (
-        !failed && (
-          <p className="mb-4 rounded-xl border border-ink/10 bg-white p-8 text-center text-xs text-ink/35 shadow-sm">
-            {employers.records.length === 0
-              ? "Add an employer to start tracking your pay and hours."
-              : "Open an employer below to add its payslips and shifts."}
-          </p>
-        )
-      )}
-
       <RecordCard
         title="Employers"
         noun="employer"
@@ -98,9 +82,25 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
       />
 
       {employers.saveError && (
-        <p role="alert" className="mt-2 text-center text-xs text-red-600">
+        <p role="alert" className="mb-4 text-center text-xs text-red-600">
           Couldn't save your change, so it was undone. Please try again.
         </p>
+      )}
+
+      {hasPay || hasShifts ? (
+        <>
+          <IncomeStats overview={data} />
+          {hasPay && <IncomeChart weeks={data.incomeWeeks} settledUntil={data.settledUntil} employers={data.employers} />}
+          {hasShifts && <HoursChart weeks={data.shiftWeeks} employers={data.employers} />}
+        </>
+      ) : (
+        !failed && (
+          <p className="mb-4 rounded-xl border border-ink/10 bg-white p-8 text-center text-xs text-ink/35 shadow-sm">
+            {employers.records.length === 0
+              ? "Add an employer above to start tracking your pay and hours."
+              : "Open an employer above to add its payslips and shifts."}
+          </p>
+        )
       )}
 
       {adding && (
