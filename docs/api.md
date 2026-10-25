@@ -8,7 +8,7 @@ Schemas live in [`src/shared/schemas.ts`](../src/shared/schemas.ts) and are shar
 | GET | `/api/health` | `{ ok: true }` |
 | GET / POST | `/api/bills` | list → `{ items }`; create → `201 { item }` |
 | GET / PATCH / DELETE | `/api/bills/:id` | PATCH takes any subset of the create fields |
-| GET / POST | `/api/employers` | name (unique, ignoring case), contract, sync; the colour is assigned by the server |
+| GET / POST | `/api/employers` | name (unique, ignoring case), contract, sync, colour (optional on create: a free palette colour is picked) |
 | GET / PATCH / DELETE | `/api/employers/:id` | delete returns 409 while the employer still has shifts or payslips |
 | GET / POST | `/api/shifts` | needs an existing `employerId`; created shifts are always `source: "manual"` |
 | GET / PATCH / DELETE | `/api/shifts/:id` | |

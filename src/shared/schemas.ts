@@ -44,10 +44,12 @@ export const EmployerSchema = z.object({
   name: text,
   contract: z.enum(CONTRACTS),
   sync: z.enum(SYNC_MODES),
-  /** Chart colour, chosen by the server when the employer is created so it never changes afterwards. */
+  /** Chart colour. The server picks a free palette colour when none is given on creation. */
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
 });
-export const EmployerInputSchema = EmployerSchema.pick({ name: true, contract: true, sync: true });
+export const EmployerInputSchema = EmployerSchema.pick({ name: true, contract: true, sync: true, color: true }).partial({
+  color: true,
+});
 export const EmployerPatchSchema = EmployerInputSchema.partial();
 export type Employer = z.infer<typeof EmployerSchema>;
 export type EmployerInput = z.infer<typeof EmployerInputSchema>;

@@ -144,9 +144,15 @@ describe("employers", () => {
     expect(second.item.color).toBe("#f08a24");
   });
 
-  it("ignores a client-supplied colour", async () => {
-    const { item } = await createEmployer({ color: "#000000" });
-    expect(item.color).toBe("#2a78d6");
+  it("uses a colour given on creation, and lets it be changed later", async () => {
+    const { item } = await createEmployer({ color: "#123456" });
+    expect(item.color).toBe("#123456");
+    const patched = await call(`/api/employers/${item.id}`, { method: "PATCH", body: { color: "#abcdef" } });
+    expect(((await patched.json()) as { item: Item }).item.color).toBe("#abcdef");
+  });
+
+  it("rejects a colour that isn't a hex code", async () => {
+    expect((await createEmployer({ color: "blue" })).res.status).toBe(400);
   });
 
   it("rejects duplicate names ignoring case, on create and rename", async () => {

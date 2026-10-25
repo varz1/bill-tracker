@@ -33,7 +33,7 @@ export const employers = crudRoutes({
   patchSchema: EmployerPatchSchema,
   create: async (input, meta, c) => {
     const existing = await employerStore(c.env).list();
-    return { ...input, color: nextEmployerColor(existing.map((e) => e.color)), ...meta };
+    return { ...input, color: input.color ?? nextEmployerColor(existing.map((e) => e.color)), ...meta };
   },
   check: async (c, record) => {
     const existing = await employerStore(c.env).list();

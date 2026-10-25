@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { CONTRACT_LABELS, SYNC_LABELS, sameName } from "../../shared/employers";
+import { CONTRACT_LABELS, EMPLOYER_COLORS, nextEmployerColor, SYNC_LABELS, sameName } from "../../shared/employers";
 import { CONTRACTS, type Employer, type EmployerInput } from "../../shared/schemas";
 import { ApiError } from "../lib/api";
 import { hintClass, inputClass, labelClass, submitClass } from "./fields";
@@ -15,6 +15,7 @@ interface Props {
 export function EmployerForm({ employer, all, onSubmit }: Props) {
   const [name, setName] = useState(employer?.name ?? "");
   const [contract, setContract] = useState<Employer["contract"]>(employer?.contract ?? "full-time");
+  const [color, setColor] = useState(employer?.color ?? nextEmployerColor(all.map((o) => o.color)));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +30,7 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ name: trimmed, contract, sync: employer?.sync ?? "manual" });
+      await onSubmit({ name: trimmed, contract, sync: employer?.sync ?? "manual", color });
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409 ? "You already have an employer with that name." : "Couldn't save. Please try again.");
       setBusy(false);
@@ -43,6 +44,24 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus className={inputClass} />
         {employer && <span className={hintClass}>Renaming updates this employer everywhere, including its payslips and shifts.</span>}
       </label>
+      <div role="radiogroup" aria-label="Colour">
+        <span className={labelClass}>Colour</span>
+        <div className="flex gap-2.5">
+          {[...new Set([...EMPLOYER_COLORS, color])].map((c, i) => (
+            <button
+              key={c}
+              type="button"
+              role="radio"
+              aria-checked={color === c}
+              aria-label={`Colour ${i + 1}`}
+              onClick={() => setColor(c)}
+              className={`h-7 w-7 rounded-full ring-offset-2 transition ${color === c ? "ring-2 ring-ink" : "hover:ring-2 hover:ring-ink/25"}`}
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+        <span className={hintClass}>Used for this employer in the charts.</span>
+      </div>
       <label className="block">
         <span className={labelClass}>Contract</span>
         <select value={contract} onChange={(e) => setContract(e.target.value as Employer["contract"])} className={inputClass}>
