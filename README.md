@@ -1,7 +1,5 @@
 # Bill Tracker
 
-where is my money
-
 Track recurring bills, shifts and income in one place. Single currency, single user.
 
 ## Features
@@ -14,6 +12,7 @@ Track recurring bills, shifts and income in one place. Single currency, single u
 - Month-end dates stay put: a bill due on the 31st falls on the last day of shorter months.
 
 **Income**
+- Design for Casual and Part-time Worker
 - Record payslips (gross, tax, net, super) and shifts (date, paid hours, optional start and end times).
 - Charts of gross pay by week, split by employer, and paid hours by week.
 - Stats: total gross, net and tax, average net per week, average hours per week, average hourly rate (gross ÷ paid hours).
