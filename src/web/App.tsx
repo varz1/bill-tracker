@@ -31,6 +31,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-paper font-sans text-ink">
+      {DEMO_MODE && (
+        <p className="bg-ink px-4 py-1.5 text-center text-xs text-paper/80">Demo app. All data shown here is made up.</p>
+      )}
       <div className="mx-auto max-w-md px-4 py-6">
         <header className="mb-5 flex items-center gap-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ink">
@@ -63,10 +66,6 @@ export default function App() {
           )}
           {tab === "settings" && <Settings />}
         </SettingsProvider>
-
-        {DEMO_MODE && (
-          <p className="mt-6 text-center text-xs text-ink/40">Demo app. All data shown here is made up.</p>
-        )}
       </div>
     </div>
   );
