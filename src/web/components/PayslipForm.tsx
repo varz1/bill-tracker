@@ -3,20 +3,18 @@ import { useState, type FormEvent } from "react";
 import { amountToInput, parseAmount } from "../../shared/format";
 import type { Income, IncomeInput } from "../../shared/schemas";
 import { useSettings } from "../lib/settings";
-import { EmployerField } from "./EmployerField";
 import { inputClass, labelClass, submitClass } from "./fields";
 
 interface Props {
   payslip?: Income;
-  employers: string[];
+  employerId: string;
   onSubmit(input: IncomeInput): Promise<void>;
 }
 
 const money = `${inputClass} font-mono tabular-nums`;
 
-export function PayslipForm({ payslip, employers, onSubmit }: Props) {
+export function PayslipForm({ payslip, employerId, onSubmit }: Props) {
   const { settings } = useSettings();
-  const [employer, setEmployer] = useState(payslip?.employer ?? employers[0] ?? "");
   const [payDate, setPayDate] = useState(payslip?.payDate ?? "");
   const [periodStart, setPeriodStart] = useState(payslip?.periodStart ?? "");
   const [periodEnd, setPeriodEnd] = useState(payslip?.periodEnd ?? "");
@@ -44,7 +42,6 @@ export function PayslipForm({ payslip, employers, onSubmit }: Props) {
     const t = parseAmount(tax, { allowZero: true });
     const n = parseAmount(net, { allowZero: true });
     const s = parseAmount(superAmount, { allowZero: true });
-    if (!employer.trim()) return setError("Enter the employer.");
     if (!payDate) return setError("Choose the pay date.");
     if (!periodStart || !periodEnd) return setError("Choose the pay period start and end.");
     if (periodEnd < periodStart) return setError("The pay period can't end before it starts.");
@@ -56,7 +53,7 @@ export function PayslipForm({ payslip, employers, onSubmit }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ employer: employer.trim(), payDate, periodStart, periodEnd, gross: g, tax: t, net: n, super: s });
+      await onSubmit({ employerId, payDate, periodStart, periodEnd, gross: g, tax: t, net: n, super: s });
     } catch {
       setError("Couldn't save. Please try again.");
       setBusy(false);
@@ -82,11 +79,10 @@ export function PayslipForm({ payslip, employers, onSubmit }: Props) {
 
   return (
     <form onSubmit={submit} className="space-y-3 px-5 pt-4 pb-8">
-      <EmployerField value={employer} onChange={setEmployer} suggestions={employers} />
       <div className="grid grid-cols-2 gap-2">
         <label className="block">
           <span className={labelClass}>Period start</span>
-          <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className={inputClass} />
+          <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} autoFocus className={inputClass} />
         </label>
         <label className="block">
           <span className={labelClass}>Period end</span>

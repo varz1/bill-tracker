@@ -1,4 +1,4 @@
-import type { Bill, BillInput, Income, IncomeInput, Settings, Shift, ShiftInput } from "../../shared/schemas";
+import type { Bill, BillInput, Employer, EmployerInput, Income, IncomeInput, Settings, Shift, ShiftInput } from "../../shared/schemas";
 
 export class ApiError extends Error {
   constructor(
@@ -41,6 +41,7 @@ function resource<T, I>(base: string): Resource<T, I> {
 
 export const api = {
   bills: resource<Bill, BillInput>("/api/bills"),
+  employers: resource<Employer, EmployerInput>("/api/employers"),
   shifts: resource<Shift, ShiftInput>("/api/shifts"),
   income: resource<Income, IncomeInput>("/api/income"),
   settings: {

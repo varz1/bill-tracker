@@ -1,5 +1,5 @@
 import { Wallet } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { DEMO_MODE } from "./config";
 import { SettingsProvider } from "./lib/settings";
 import Bills from "./views/Bills";
@@ -16,17 +16,37 @@ const TABS = [
 
 type Tab = (typeof TABS)[number]["key"];
 
-/** The tab named in the URL hash (#income), so a refresh or a shared link keeps its place. */
-function tabFromHash(): Tab {
-  const name = window.location.hash.slice(1);
-  return TABS.find((t) => t.key === name)?.key ?? "bills";
+interface Route {
+  tab: Tab;
+  /** Set on #income/<id>: the employer page that is open. */
+  employerId: string | null;
+}
+
+/** The place named in the URL hash (#income, #income/<employer id>), so a refresh or shared link keeps it. */
+function routeFromHash(): Route {
+  const [name, id] = window.location.hash.slice(1).split("/");
+  const tab = TABS.find((t) => t.key === name)?.key ?? "bills";
+  return { tab, employerId: tab === "income" && id ? id : null };
 }
 
 export default function App() {
-  const [tab, setTabState] = useState<Tab>(tabFromHash);
+  const [route, setRoute] = useState<Route>(routeFromHash);
+  const { tab } = route;
+
+  // Back and forward buttons move between the overview and an employer page.
+  useEffect(() => {
+    const sync = () => setRoute(routeFromHash());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
   const setTab = (next: Tab) => {
-    setTabState(next);
     window.history.replaceState(null, "", `#${next}`);
+    setRoute({ tab: next, employerId: null });
+  };
+  const openEmployer = (id: string | null) => {
+    window.history.pushState(null, "", id ? `#income/${id}` : "#income");
+    setRoute({ tab: "income", employerId: id });
   };
 
   return (
@@ -61,7 +81,7 @@ export default function App() {
           {tab === "bills" && <Bills />}
           {tab === "income" && (
             <Suspense fallback={<p className="py-20 text-center text-sm text-ink/40">Loading…</p>}>
-              <Income />
+              <Income employerId={route.employerId} onOpenEmployer={openEmployer} />
             </Suspense>
           )}
           {tab === "settings" && <Settings />}

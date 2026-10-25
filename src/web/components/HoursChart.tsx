@@ -2,14 +2,14 @@ import { useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatHours } from "../../shared/format";
 import { weekEnd, type ShiftWeek } from "../../shared/income";
+import type { Employer } from "../../shared/schemas";
 import { useSettings } from "../lib/settings";
 import { ChartTooltip, TooltipRow } from "./ChartTooltip";
 import { Legend } from "./IncomeChart";
 
 interface Props {
   weeks: ShiftWeek[];
-  employers: string[];
-  colors: Record<string, string>;
+  employers: Employer[];
 }
 
 interface Row {
@@ -21,16 +21,16 @@ interface Row {
 const AXIS = { fontSize: 10, fill: "#898781" };
 
 /** Paid hours per week, one line per employer, with a list view as an alternative. */
-export function HoursChart({ weeks, employers, colors }: Props) {
+export function HoursChart({ weeks, employers }: Props) {
   const { fmt } = useSettings();
   const [mode, setMode] = useState<"chart" | "list">("chart");
-  const active = employers.filter((e) => weeks.some((w) => (w.byEmployer[e] ?? 0) > 0));
-  const keyOf = (employer: string) => `e${employers.indexOf(employer)}`;
+  const active = employers.filter((e) => weeks.some((w) => (w.byEmployer[e.id] ?? 0) > 0));
+  const keyOf = (employer: Employer) => `e${employers.indexOf(employer)}`;
 
   const data: Row[] = weeks.map((week) => ({
     label: fmt.date(week.weekStart),
     week,
-    ...Object.fromEntries(active.map((e) => [keyOf(e), week.byEmployer[e] ?? 0])),
+    ...Object.fromEntries(active.map((e) => [keyOf(e), week.byEmployer[e.id] ?? 0])),
   }));
 
   return (
@@ -52,7 +52,7 @@ export function HoursChart({ weeks, employers, colors }: Props) {
           ))}
         </div>
       </div>
-      <Legend names={active} colors={colors} />
+      <Legend employers={active} />
 
       {mode === "chart" ? (
         <div role="img" aria-label="Line chart of paid hours per week, by employer">
@@ -77,7 +77,7 @@ export function HoursChart({ weeks, employers, colors }: Props) {
                   return (
                     <ChartTooltip title={`Week of ${fmt.date(row.week.weekStart)}`}>
                       {active.map((e) => (
-                        <TooltipRow key={e} color={colors[e]} label={e} value={formatHours(row.week.byEmployer[e] ?? 0)} />
+                        <TooltipRow key={e.id} color={e.color} label={e.name} value={formatHours(row.week.byEmployer[e.id] ?? 0)} />
                       ))}
                       <div className="mt-1 border-t border-paper/15 pt-1">
                         <TooltipRow label="Total" value={formatHours(row.week.total)} />
@@ -88,9 +88,9 @@ export function HoursChart({ weeks, employers, colors }: Props) {
               />
               {active.map((e) => (
                 <Line
-                  key={e}
+                  key={e.id}
                   dataKey={keyOf(e)}
-                  stroke={colors[e]}
+                  stroke={e.color}
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
@@ -109,9 +109,9 @@ export function HoursChart({ weeks, employers, colors }: Props) {
               </span>
               <span className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-0.5">
                 {active.map((e) => (
-                  <span key={e} className="flex items-center gap-1">
-                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: colors[e] }} />
-                    <span className="font-mono text-ink/70 tabular-nums">{formatHours(w.byEmployer[e] ?? 0)}</span>
+                  <span key={e.id} className="flex items-center gap-1">
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: e.color }} />
+                    <span className="font-mono text-ink/70 tabular-nums">{formatHours(w.byEmployer[e.id] ?? 0)}</span>
                   </span>
                 ))}
               </span>

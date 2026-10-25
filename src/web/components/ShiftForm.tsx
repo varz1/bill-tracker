@@ -2,17 +2,15 @@ import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { hoursBetween } from "../../shared/income";
 import type { Shift, ShiftInput } from "../../shared/schemas";
-import { EmployerField } from "./EmployerField";
 import { inputClass, labelClass, submitClass } from "./fields";
 
 interface Props {
   shift?: Shift;
-  employers: string[];
+  employerId: string;
   onSubmit(input: ShiftInput): Promise<void>;
 }
 
-export function ShiftForm({ shift, employers, onSubmit }: Props) {
-  const [employer, setEmployer] = useState(shift?.employer ?? employers[0] ?? "");
+export function ShiftForm({ shift, employerId, onSubmit }: Props) {
   const [date, setDate] = useState(shift?.date ?? "");
   const [start, setStart] = useState(shift?.start ?? "");
   const [end, setEnd] = useState(shift?.end ?? "");
@@ -33,7 +31,6 @@ export function ShiftForm({ shift, employers, onSubmit }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     const paid = Number(hours);
-    if (!employer.trim()) return setError("Enter the employer.");
     if (!date) return setError("Choose the date.");
     if (!hours || !Number.isFinite(paid) || paid <= 0 || paid > 24) {
       return setError("Enter the paid hours, between 0 and 24.");
@@ -44,7 +41,7 @@ export function ShiftForm({ shift, employers, onSubmit }: Props) {
     setError(null);
     try {
       await onSubmit({
-        employer: employer.trim(),
+        employerId,
         date,
         hours: paid,
         ...(start && end ? { start, end } : {}),
@@ -57,10 +54,9 @@ export function ShiftForm({ shift, employers, onSubmit }: Props) {
 
   return (
     <form onSubmit={submit} className="space-y-3 px-5 pt-4 pb-8">
-      <EmployerField value={employer} onChange={setEmployer} suggestions={employers} />
       <label className="block">
         <span className={labelClass}>Date</span>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} autoFocus className={inputClass} />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="block">

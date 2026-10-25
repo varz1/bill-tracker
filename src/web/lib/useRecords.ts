@@ -3,11 +3,21 @@ import type { Resource } from "./api";
 
 export type LoadStatus = "loading" | "ready" | "error";
 
+export interface Records<T, I> {
+  records: T[];
+  status: LoadStatus;
+  saveError: boolean;
+  /** Rejects on failure so the calling form can show the error. */
+  add(input: I): Promise<void>;
+  update(id: string, patch: Partial<I>): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
 /**
  * Loads a list of records once and keeps it in sync with the API.
  * Edits and deletes apply instantly and roll back if the save fails.
  */
-export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>) {
+export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>): Records<T, I> {
   const [records, setRecords] = useState<T[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [saveError, setSaveError] = useState(false);
