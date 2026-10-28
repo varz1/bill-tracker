@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BillInputSchema,
   BillPatchSchema,
+  EmployerInputSchema,
+  EmployerSchema,
   SettingsPatchSchema,
   ShiftInputSchema,
 } from "../src/shared/schemas";
@@ -53,5 +55,24 @@ describe("SettingsPatchSchema", () => {
     expect(SettingsPatchSchema.safeParse({ currency: "USD" }).success).toBe(true);
     expect(SettingsPatchSchema.safeParse({ currency: "usd" }).success).toBe(false);
     expect(SettingsPatchSchema.safeParse({ weekStartsOn: 2 }).success).toBe(false);
+  });
+});
+
+describe("Employer break settings", () => {
+  const base = { name: "Cafe", contract: "casual", sync: "calendar" };
+
+  it("are optional on create and on stored employers", () => {
+    expect(EmployerInputSchema.safeParse(base).success).toBe(true);
+    const stored = { ...base, id: "E1", color: "#2a78d6", createdAt: "2026-10-28T00:00:00.000Z", updatedAt: "2026-10-28T00:00:00.000Z" };
+    expect(EmployerSchema.safeParse(stored).success).toBe(true);
+  });
+
+  it("accept a known rule and break length", () => {
+    expect(EmployerInputSchema.safeParse({ ...base, breakRule: "over5_twice10", breakMinutes: 45 }).success).toBe(true);
+  });
+
+  it("reject an unknown rule or a break length that is not offered", () => {
+    expect(EmployerInputSchema.safeParse({ ...base, breakRule: "over7" }).success).toBe(false);
+    expect(EmployerInputSchema.safeParse({ ...base, breakMinutes: 50 }).success).toBe(false);
   });
 });

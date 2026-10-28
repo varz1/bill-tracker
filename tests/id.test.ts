@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { newId } from "../src/shared/id";
+import { newId, stableId } from "../src/shared/id";
+
+describe("stableId", () => {
+  it("is the same for the same input and differs otherwise", () => {
+    expect(stableId("a")).toBe(stableId("a"));
+    expect(stableId("a")).not.toBe(stableId("b"));
+    expect(stableId("ab\nc")).not.toBe(stableId("a\nbc"));
+  });
+
+  it("has a fixed length and no collisions across many inputs", () => {
+    const ids = new Set(Array.from({ length: 5000 }, (_, i) => stableId(`E1\nuid-${i}`)));
+    expect(ids.size).toBe(5000);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-z]{22}$/);
+  });
+});
 
 describe("newId", () => {
   it("produces 26-char Crockford base32 ids", () => {

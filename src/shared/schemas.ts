@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BREAK_RULES } from "./breaks";
 import { isValidIsoDate } from "./dates";
 import { CYCLES } from "./schedule";
 
@@ -46,10 +47,18 @@ export const EmployerSchema = z.object({
   sync: z.enum(SYNC_MODES),
   /** Chart colour. The server picks a free palette colour when none is given on creation. */
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
+  /** Which unpaid meal break calendar sync takes off an event's length. Absent means none. */
+  breakRule: z.enum(BREAK_RULES).optional(),
+  breakMinutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).optional(),
 });
-export const EmployerInputSchema = EmployerSchema.pick({ name: true, contract: true, sync: true, color: true }).partial({
+export const EmployerInputSchema = EmployerSchema.pick({
+  name: true,
+  contract: true,
+  sync: true,
   color: true,
-});
+  breakRule: true,
+  breakMinutes: true,
+}).partial({ color: true });
 export const EmployerPatchSchema = EmployerInputSchema.partial();
 export type Employer = z.infer<typeof EmployerSchema>;
 export type EmployerInput = z.infer<typeof EmployerInputSchema>;
