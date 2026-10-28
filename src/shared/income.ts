@@ -110,11 +110,24 @@ export function hoursBetween(start: string, end: string): number | null {
 export const lastFinishedDay = (today: IsoDate, weekStartsOn: WeekStart): IsoDate =>
   addDays(weekStart(today, weekStartsOn), -1);
 
+/** What is keeping the pay stats from reaching the last finished week: one employer's shifts that no payslip covers. */
+export interface HeldBack {
+  employerId: string;
+  /** The date of that employer's earliest finished shift that no payslip covers. */
+  since: IsoDate;
+}
+
 /**
  * The last day up to which every shift worked has been paid. Weeks after this date still have wages
  * outstanding, so averaging them would drag the numbers down; charts fade them and stats skip them.
+ * `heldBack` names the employer whose unpaid shifts set that day, or is null when nothing does.
  */
-export function settledUntil(income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): IsoDate {
+export function settlement(
+  income: Income[],
+  shifts: Shift[],
+  today: IsoDate,
+  weekStartsOn: WeekStart,
+): { settled: IsoDate; heldBack: HeldBack | null } {
   const lastPaidEnd: Record<string, IsoDate> = {};
   for (const slip of income) {
     if (slip.payDate > today) continue;
@@ -124,16 +137,25 @@ export function settledUntil(income: Income[], shifts: Shift[], today: IsoDate, 
   }
 
   let cutoff = lastFinishedDay(today, weekStartsOn);
+  let holder: string | null = null;
+  const firstUnpaid: Record<string, IsoDate> = {};
   for (const shift of shifts) {
-    if (shift.date > cutoff) continue;
+    if (shift.date > lastFinishedDay(today, weekStartsOn)) continue;
     const paidEnd = lastPaidEnd[shift.employerId];
     if (paidEnd && shift.date <= paidEnd) continue;
+    if (!firstUnpaid[shift.employerId] || shift.date < firstUnpaid[shift.employerId]) firstUnpaid[shift.employerId] = shift.date;
     // Worked but not yet paid: nothing from the start of that week onward is settled.
     const owedFrom = addDays(weekStart(shift.date, weekStartsOn), -1);
-    if (owedFrom < cutoff) cutoff = owedFrom;
+    if (owedFrom < cutoff) {
+      cutoff = owedFrom;
+      holder = shift.employerId;
+    }
   }
-  return cutoff;
+  return { settled: cutoff, heldBack: holder ? { employerId: holder, since: firstUnpaid[holder] } : null };
 }
+
+export const settledUntil = (income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): IsoDate =>
+  settlement(income, shifts, today, weekStartsOn).settled;
 
 // ---- Statistics ------------------------------------------------------------
 
@@ -232,6 +254,8 @@ export interface Overview {
   /** Weeks up to and including the current one, so upcoming rostered weeks aren't charted. */
   shiftWeeks: ShiftWeek[];
   settledUntil: IsoDate;
+  /** Whose unpaid shifts keep later weeks out of the pay stats, if anyone's do. */
+  heldBack: HeldBack | null;
   stats: IncomeStats;
   hours: HourStats;
   /** Employers sorted by name; charts draw and stack them in this order. */
@@ -245,7 +269,7 @@ export function overview(
   today: IsoDate,
   weekStartsOn: WeekStart,
 ): Overview {
-  const settled = settledUntil(income, shifts, today, weekStartsOn);
+  const { settled, heldBack } = settlement(income, shifts, today, weekStartsOn);
   const weeks = incomeWeeks(income, weekStartsOn);
   const stats = incomeStats(weeks, settled);
   const currentWeek = weekStart(today, weekStartsOn);
@@ -253,8 +277,20 @@ export function overview(
     incomeWeeks: weeks,
     shiftWeeks: shiftWeeks(shifts, weekStartsOn).filter((w) => w.weekStart <= currentWeek),
     settledUntil: settled,
+    heldBack,
     stats,
     hours: hourStats(shifts, income, stats, settled, today, weekStartsOn),
     employers: [...employers].sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+/** Narrows everything to one employer, so its numbers don't depend on what the others have been paid. Null keeps all. */
+export function scopeTo<T extends { employers: Employer[]; income: Income[]; shifts: Shift[] }>(employerId: string | null, data: T): T {
+  if (employerId === null) return data;
+  return {
+    ...data,
+    employers: data.employers.filter((e) => e.id === employerId),
+    income: data.income.filter((p) => p.employerId === employerId),
+    shifts: data.shifts.filter((s) => s.employerId === employerId),
   };
 }

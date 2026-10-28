@@ -6,7 +6,9 @@ import {
   incomeWeeks,
   lastFinishedDay,
   overview,
+  scopeTo,
   settledUntil,
+  settlement,
   shiftWeeks,
   weekStart,
 } from "../src/shared/income";
@@ -219,5 +221,53 @@ describe("overview", () => {
     );
     expect(o.employers.map((e) => e.name)).toEqual(["Cafe", "Shop"]);
     expect(o.shiftWeeks.at(-1)?.weekStart).toBe("2026-10-19"); // Oct 26 week is in the future
+  });
+});
+
+describe("settlement", () => {
+  it("names the employer whose unpaid shifts hold the stats back, and since when", () => {
+    const income = [slip({ payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11" })];
+    const shifts = [shift("2026-10-06", 8), shift("2026-07-10", 7.5, "hotel"), shift("2026-08-03", 7.5, "hotel")];
+    expect(settlement(income, shifts, TODAY, 1)).toEqual({
+      settled: "2026-07-05",
+      heldBack: { employerId: "hotel", since: "2026-07-10" },
+    });
+  });
+
+  it("holds nothing back when everything worked has been paid", () => {
+    const income = [slip({ payDate: "2026-10-21", periodStart: "2026-10-12", periodEnd: "2026-10-18" })];
+    expect(settlement(income, [shift("2026-10-13", 8)], TODAY, 1).heldBack).toBeNull();
+  });
+
+  it("ignores the current, unfinished week", () => {
+    expect(settlement([], [shift("2026-10-22", 8)], TODAY, 1).heldBack).toBeNull();
+  });
+});
+
+describe("scopeTo", () => {
+  const employers = (["shop", "hotel"] as const).map((id) => ({ id, name: id, color: "#000", contract: "casual", sync: "manual", ...META }) as Employer);
+  const income = [slip({ payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11" })];
+  const shifts = [shift("2026-10-06", 8), shift("2026-07-10", 7.5, "hotel")];
+  const run = (id: string | null) => {
+    const scoped = scopeTo(id, { employers, income, shifts });
+    return overview(scoped.employers, scoped.income, scoped.shifts, TODAY, 1);
+  };
+
+  it("all employers: an employer with no payslip keeps the paid one out of the stats", () => {
+    expect(run(null).stats.weeks).toBe(0);
+    expect(run(null).heldBack).toMatchObject({ employerId: "hotel" });
+  });
+
+  it("one employer: its numbers don't depend on the others", () => {
+    const shop = run("shop");
+    expect(shop.stats).toMatchObject({ weeks: 1, gross: 100000 });
+    expect(shop.heldBack).toBeNull();
+    expect(shop.employers.map((e) => e.id)).toEqual(["shop"]);
+  });
+
+  it("an employer with no payslips shows nothing paid, and says why", () => {
+    const hotel = run("hotel");
+    expect(hotel.stats.weeks).toBe(0);
+    expect(hotel.heldBack).toEqual({ employerId: "hotel", since: "2026-07-10" });
   });
 });

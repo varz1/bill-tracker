@@ -1,16 +1,18 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { addDays } from "../../shared/dates";
-import { overview, weekStart } from "../../shared/income";
+import { overview, scopeTo, weekStart } from "../../shared/income";
 import { EmployerDetail } from "../components/EmployerDetail";
 import { EmployerForm, saveErrorText } from "../components/EmployerForm";
 import { EmployerRow } from "../components/EmployerRow";
 import { HoursChart } from "../components/HoursChart";
 import { IncomeChart } from "../components/IncomeChart";
 import { IncomeStats } from "../components/IncomeStats";
+import { ScopePicker } from "../components/ScopePicker";
 import { Modal } from "../components/Modal";
 import { RecordCard } from "../components/RecordCard";
 import { api } from "../lib/api";
+import { useScope } from "../lib/useScope";
 import { useSettings } from "../lib/settings";
 import { useRecords } from "../lib/useRecords";
 
@@ -33,10 +35,18 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
   const ready = all.every((r) => r.status === "ready");
   const failed = all.some((r) => r.status === "error");
 
-  const data = useMemo(
-    () => overview(employers.records, payslips.records, shifts.records, today, settings.weekStartsOn),
-    [employers.records, payslips.records, shifts.records, today, settings.weekStartsOn],
+  const [scope, setScope] = useScope(employers.records.map((e) => e.id));
+  const book = useMemo(
+    () => ({ employers: employers.records, income: payslips.records, shifts: shifts.records }),
+    [employers.records, payslips.records, shifts.records],
   );
+  const run = (id: string | null) => {
+    const part = scopeTo(id, book);
+    return overview(part.employers, part.income, part.shifts, today, settings.weekStartsOn);
+  };
+  // Everyone's numbers: the employer list and last week's hours. What the stats and charts show follows the picker.
+  const data = useMemo(() => run(null), [book, today, settings.weekStartsOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => run(scope), [book, scope, today, settings.weekStartsOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ready && !failed) {
     return (
@@ -48,13 +58,14 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
 
   const open = employerId ? employers.records.find((e) => e.id === employerId) : undefined;
   if (open) {
+    // An employer's own page counts only its own payslips and shifts, whatever the others have been paid.
     return (
       <EmployerDetail
         employer={open}
         employers={employers}
         payslips={payslips}
         shifts={shifts}
-        overview={data}
+        overview={run(open.id)}
         notice={linkNotice}
         onBack={() => {
           setLinkNotice(null);
@@ -66,8 +77,9 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
 
   const lastWeek = addDays(weekStart(today, settings.weekStartsOn), -7);
   const lastWeekHours = (id: string) => data.shiftWeeks.find((w) => w.weekStart === lastWeek)?.byEmployer[id] ?? null;
-  const hasPay = payslips.records.length > 0;
-  const hasShifts = shifts.records.length > 0;
+  const scoped = scopeTo(scope, book);
+  const hasPay = scoped.income.length > 0;
+  const hasShifts = scoped.shifts.length > 0;
 
   return (
     <>
@@ -95,9 +107,10 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
 
       {hasPay || hasShifts ? (
         <>
-          <IncomeStats overview={data} />
-          {hasPay && <IncomeChart weeks={data.incomeWeeks} settledUntil={data.settledUntil} employers={data.employers} />}
-          {hasShifts && <HoursChart weeks={data.shiftWeeks} employers={data.employers} />}
+          <ScopePicker employers={data.employers} value={scope} onChange={setScope} />
+          <IncomeStats overview={shown} onlyOne={scope !== null} />
+          {hasPay && <IncomeChart weeks={shown.incomeWeeks} settledUntil={shown.settledUntil} employers={shown.employers} />}
+          {hasShifts && <HoursChart weeks={shown.shiftWeeks} employers={shown.employers} />}
         </>
       ) : (
         !failed && (
