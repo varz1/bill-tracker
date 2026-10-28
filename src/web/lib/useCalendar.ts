@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarStatus } from "../../shared/schemas";
 import { api, ApiError } from "./api";
 
-const POLL_MS = 2_000;
+// A sync takes a second or two, so poll often enough to follow it from the start.
+const POLL_MS = 700;
+/** How long the "just synced" note stays after a click the server turned down. */
+const NOTE_MS = 4_000;
 /** Stop waiting for a sync after this long; the status still shows whatever happened. */
 const GIVE_UP_MS = 60_000;
 /** A calendar last synced longer ago than this is refreshed when its page opens. */
@@ -17,6 +20,8 @@ export interface CalendarControl {
   syncing: boolean;
   /** The status couldn't be read or a sync couldn't be started. */
   unreachable: boolean;
+  /** A sync was asked for right after another one, so nothing was started; the status already shows that result. */
+  tooSoon: boolean;
   syncNow(): Promise<void>;
   /** Reads the status again, e.g. just after linking. */
   refresh(): Promise<void>;
@@ -33,6 +38,9 @@ export function useCalendar(employerId: string, linked: boolean, onSynced: () =>
   const [status, setStatus] = useState<CalendarStatus | null>(null);
   const [waiting, setWaitingState] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
+  const [tooSoon, setTooSoon] = useState(false);
+  const tooSoonTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(tooSoonTimer.current), []);
   // Same as `waiting`, readable inside the polling timer.
   const waitingRef = useRef(false);
   const setWaiting = useCallback((value: boolean) => {
@@ -61,6 +69,8 @@ export function useCalendar(employerId: string, linked: boolean, onSynced: () =>
   }, [setWaiting, status?.lastAttemptAt]);
 
   const syncNow = useCallback(async () => {
+    clearTimeout(tooSoonTimer.current);
+    setTooSoon(false);
     expectSync();
     try {
       await api.calendar.sync(employerId);
@@ -68,8 +78,11 @@ export function useCalendar(employerId: string, linked: boolean, onSynced: () =>
     } catch (err) {
       setWaiting(false);
       // "Too soon" means a sync has only just run; its result is what the status already shows.
-      if (err instanceof ApiError && err.status === 429) await refresh();
-      else setUnreachable(true);
+      if (err instanceof ApiError && err.status === 429) {
+        setTooSoon(true);
+        tooSoonTimer.current = setTimeout(() => setTooSoon(false), NOTE_MS);
+        await refresh();
+      } else setUnreachable(true);
     }
   }, [employerId, expectSync, refresh, setWaiting]);
 
@@ -116,5 +129,5 @@ export function useCalendar(employerId: string, linked: boolean, onSynced: () =>
     return () => clearInterval(timer);
   }, [running, employerId, setWaiting]);
 
-  return { status, syncing: running, unreachable, syncNow, refresh, expectSync };
+  return { status, syncing: running, unreachable, tooSoon, syncNow, refresh, expectSync };
 }

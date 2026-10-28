@@ -27,7 +27,7 @@ function changeSummary(result: NonNullable<NonNullable<CalendarControl["status"]
 
 /** An employer's calendar link: when it last synced, what that did, and the way to unlink it. */
 export function CalendarSection({ calendar, onUnlink }: Props) {
-  const { status, syncing, unreachable, syncNow } = calendar;
+  const { status, syncing, unreachable, tooSoon, syncNow } = calendar;
   const [step, setStep] = useState<"idle" | "choosing" | "working">("idle");
   const [unlinkFailed, setUnlinkFailed] = useState(false);
 
@@ -82,6 +82,7 @@ export function CalendarSection({ calendar, onUnlink }: Props) {
                 {syncing ? "Reading your calendar…" : status.result ? "Still importing your calendar…" : "Not synced yet."}
               </p>
             )}
+            {tooSoon && <p className="text-ink/55">Just synced a moment ago. Try again in a few seconds.</p>}
             {unreachable && (
               <p role="alert" className="text-red-600">
                 Couldn't start a sync. Please try again.
