@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCalendar, syncWindow, type ParseOptions } from "../src/shared/calendar";
+import { parseCalendar, SYNC_WINDOW, type ParseOptions } from "../src/shared/calendar";
 import { ics, zoned } from "./helpers/ics";
 
 const opts: ParseOptions = { fallbackZone: "Australia/Sydney", from: "2026-01-01", to: "2026-12-31" };
@@ -157,8 +157,14 @@ describe("parseCalendar", () => {
   });
 });
 
-describe("syncWindow", () => {
-  it("covers two weeks back and ninety days ahead", () => {
-    expect(syncWindow("2026-10-28")).toEqual({ from: "2026-10-14", to: "2027-01-26" });
+describe("SYNC_WINDOW", () => {
+  it("covers the whole calendar", () => {
+    const feed = ics([
+      zoned("OLD", "Australia/Darwin", "20100105T090000", "20100105T130000"),
+      zoned("FAR", "Australia/Darwin", "20350105T090000", "20350105T130000"),
+    ]);
+    const { shifts, stats } = parseCalendar(feed, { ...opts, ...SYNC_WINDOW });
+    expect(shifts.map((s) => s.key)).toEqual(["OLD", "FAR"]);
+    expect(stats.outsideWindow).toBe(0);
   });
 });

@@ -1,5 +1,5 @@
 import { DEFAULT_BREAK_MINUTES } from "../../shared/breaks";
-import { parseCalendar, syncWindow } from "../../shared/calendar";
+import { parseCalendar, SYNC_WINDOW } from "../../shared/calendar";
 import { maskCalendarUrl, normalizeCalendarUrl } from "../../shared/calendarUrl";
 import { todayIn } from "../../shared/dates";
 import {
@@ -228,10 +228,10 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
   async function run(): Promise<{ outcome: SyncOutcome; next: CalendarState }> {
     const settings = await loadSettings(kv);
     const today = todayIn(settings.timeZone, now);
-    const window = syncWindow(today);
+    const window = SYNC_WINDOW;
     const breakRule = employer!.breakRule ?? "none";
     const breakMinutes = employer!.breakMinutes ?? DEFAULT_BREAK_MINUTES;
-    const configSig = await fingerprint(JSON.stringify([today, breakRule, breakMinutes, source!.match ?? "", settings.timeZone]));
+    const configSig = await fingerprint(JSON.stringify([today, breakRule, breakMinutes, source!.match ?? "", settings.timeZone, window]));
 
     // The server may answer "unchanged", but only if nothing we compute from the feed has changed either.
     const headers: Record<string, string> = { accept: "text/calendar, */*;q=0.5" };

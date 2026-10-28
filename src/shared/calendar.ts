@@ -3,7 +3,7 @@
 // Deliberately small: it reads the properties a roster needs and nothing else. Recurring events (RRULE)
 // are not expanded; they are skipped and counted so the caller can tell the user.
 
-import { addDays, type IsoDate } from "./dates";
+import type { IsoDate } from "./dates";
 import { DEFAULT_BREAK_MINUTES, paidMinutes, type BreakRule } from "./breaks";
 import { instantOf, isValidZone, wallOf } from "./timezone";
 
@@ -227,7 +227,5 @@ export function parseCalendar(text: string, opts: ParseOptions): ParsedCalendar 
   return { shifts: [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)), zone, stats };
 }
 
-/** The sync window around `today`: a little history, then the roster ahead. */
-export function syncWindow(today: IsoDate): { from: IsoDate; to: IsoDate } {
-  return { from: addDays(today, -14), to: addDays(today, 90) };
-}
+/** A sync covers the whole calendar, past and future. Shifts that already happened are still never deleted (see planSync). */
+export const SYNC_WINDOW: { from: IsoDate; to: IsoDate } = { from: "1970-01-01", to: "9999-12-31" };
