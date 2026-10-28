@@ -58,14 +58,17 @@ function offsetMs(ms: number, timeZone: string): number {
 
 /**
  * The instant at which the wall clock in `timeZone` reads the given time.
- * A time skipped by a clock change resolves to the instant after the gap; a repeated one to its first pass.
+ * A time that happens twice (clocks going back) is its first pass, as RFC 5545 says. A time skipped by a
+ * clock change (clocks going forward) resolves to the instant just after the gap.
  */
 export function instantOf(
   wall: { year: number; month: number; day: number; hour: number; minute: number; second: number },
   timeZone: string,
 ): number {
   const asUtc = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
-  const first = asUtc - offsetMs(asUtc, timeZone);
-  const second = asUtc - offsetMs(first, timeZone);
-  return second;
+  // The offset in force a day either side is the one before and the one after any change nearby.
+  const offsets = new Set([offsetMs(asUtc - 86_400_000, timeZone), offsetMs(asUtc + 86_400_000, timeZone)]);
+  const matches = [...offsets].map((o) => asUtc - o).filter((t) => offsetMs(t, timeZone) === asUtc - t);
+  if (matches.length > 0) return Math.min(...matches);
+  return asUtc - offsetMs(asUtc - offsetMs(asUtc, timeZone), timeZone);
 }

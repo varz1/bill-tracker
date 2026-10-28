@@ -15,6 +15,9 @@ let pending: Promise<unknown>[];
 
 const ctx = () => ({ waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} }) as unknown as ExecutionContext;
 
+let demo = false;
+const testEnv = () => (demo ? ({ ...asEnv(kv), DEMO: "true" } as unknown as Env) : asEnv(kv));
+
 const call = (path: string, init?: { method?: string; body?: unknown }) =>
   app.request(
     path,
@@ -23,7 +26,7 @@ const call = (path: string, init?: { method?: string; body?: unknown }) =>
       headers: { "content-type": "application/json" },
       body: init?.body === undefined ? undefined : JSON.stringify(init.body),
     },
-    asEnv(kv),
+    testEnv(),
     ctx(),
   );
 
@@ -55,6 +58,7 @@ const shiftsOf = async (employerId: string) =>
 beforeEach(() => {
   kv = new FakeKV();
   pending = [];
+  demo = false;
   vi.stubGlobal("fetch", vi.fn(async () => new Response(feed, { status: 200 })));
   vi.spyOn(console, "log").mockImplementation(() => {});
 });
@@ -215,8 +219,13 @@ describe("unlinking", () => {
 });
 
 describe("syncing on demand", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("answers at once and syncs in the background", async () => {
     const employer = await linkedEmployer();
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 31_000 });
     vi.mocked(fetch).mockImplementationOnce(async () => new Response(ics([zoned("C", "Australia/Darwin", "20261103T090000", "20261103T130000")])));
 
     const res = await call(`/api/employers/${employer.id}/sync`, { method: "POST" });
@@ -257,5 +266,101 @@ describe("the cron trigger", () => {
 
     expect(fetch).not.toHaveBeenCalled();
     expect(await shiftsOf(employer.id)).toHaveLength(2);
+  });
+});
+
+describe("limits on how a calendar can be used", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("won't start a sync, or change the link, again within half a minute", async () => {
+    const employer = await linkedEmployer();
+
+    const again = await call(`/api/employers/${employer.id}/sync`, { method: "POST" });
+    expect(again.status).toBe(429);
+    expect(await json(again)).toEqual({ error: "too_soon" });
+
+    const relink = await call(`/api/employers/${employer.id}/calendar`, { method: "PUT", body: { url: "https://calendar.example.com/other.ics" } });
+    expect(relink.status).toBe(429);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 31_000 });
+    expect((await call(`/api/employers/${employer.id}/sync`, { method: "POST" })).status).toBe(202);
+    await settle();
+  });
+
+  it("allows only a few linked calendars on a public demo", async () => {
+    demo = true;
+    for (let i = 1; i <= 3; i++) {
+      const employer = await newEmployer({ name: `Job ${i}` });
+      expect((await call(`/api/employers/${employer.id}/calendar`, { method: "PUT", body: { url: `https://calendar.example.com/${i}.ics` } })).status).toBe(202);
+    }
+    await settle();
+
+    const fourth = await newEmployer({ name: "Job 4" });
+    const res = await call(`/api/employers/${fourth.id}/calendar`, { method: "PUT", body: { url: "https://calendar.example.com/4.ics" } });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({ error: "too_many_calendars", limit: 3 });
+    expect((await json(await call(`/api/employers/${fourth.id}/calendar`))).calendar.linked).toBe(false);
+    expect((await json(await call(`/api/employers/${fourth.id}`))).item.sync).toBe("manual");
+  });
+
+  it("lets an employer that already has a calendar change it, even at the limit", async () => {
+    demo = true;
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const employer = await newEmployer({ name: `Job ${i}` });
+      ids.push(employer.id);
+      await call(`/api/employers/${employer.id}/calendar`, { method: "PUT", body: { url: `https://calendar.example.com/${i}.ics` } });
+    }
+    await settle();
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 31_000 });
+    const res = await call(`/api/employers/${ids[0]}/calendar`, { method: "PUT", body: { url: "https://calendar.example.com/new.ics" } });
+    expect(res.status).toBe(202);
+    await settle();
+  });
+
+  it("frees a place when a calendar is unlinked", async () => {
+    demo = true;
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const employer = await newEmployer({ name: `Job ${i}` });
+      ids.push(employer.id);
+      await call(`/api/employers/${employer.id}/calendar`, { method: "PUT", body: { url: `https://calendar.example.com/${i}.ics` } });
+    }
+    await settle();
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 120_000 });
+    await call(`/api/employers/${ids[0]}/calendar?shifts=delete`, { method: "DELETE" });
+    const fourth = await newEmployer({ name: "Job 4" });
+    expect((await call(`/api/employers/${fourth.id}/calendar`, { method: "PUT", body: { url: "https://calendar.example.com/4.ics" } })).status).toBe(202);
+    await settle();
+  });
+
+  it("tells a demo visitor when their calendar will be removed, and no one else", async () => {
+    demo = true;
+    const employer = await linkedEmployer();
+    const { calendar } = await json(await call(`/api/employers/${employer.id}/calendar`));
+    const hoursLeft = (Date.parse(calendar.expiresAt) - Date.now()) / 3_600_000;
+    expect(hoursLeft).toBeGreaterThan(23);
+    expect(hoursLeft).toBeLessThanOrEqual(24);
+
+    demo = false;
+    expect((await json(await call(`/api/employers/${employer.id}/calendar`))).calendar.expiresAt).toBeUndefined();
+  });
+
+  it("the cron removes a demo calendar once its day is up", async () => {
+    demo = true;
+    const employer = await linkedEmployer();
+    expect(await shiftsOf(employer.id)).toHaveLength(2);
+
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 25 * 3_600_000 });
+    const done: Promise<unknown>[] = [];
+    await worker.scheduled({} as ScheduledController, testEnv(), { waitUntil: (p: Promise<unknown>) => void done.push(p) } as unknown as ExecutionContext);
+    await Promise.all(done);
+
+    expect(await shiftsOf(employer.id)).toHaveLength(0);
+    expect((await json(await call(`/api/employers/${employer.id}/calendar`))).calendar.linked).toBe(false);
+    expect((await json(await call(`/api/employers/${employer.id}`))).item.sync).toBe("manual");
   });
 });

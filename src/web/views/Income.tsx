@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { addDays } from "../../shared/dates";
 import { overview, weekStart } from "../../shared/income";
 import { EmployerDetail } from "../components/EmployerDetail";
-import { EmployerForm } from "../components/EmployerForm";
+import { EmployerForm, saveErrorText } from "../components/EmployerForm";
 import { EmployerRow } from "../components/EmployerRow";
 import { HoursChart } from "../components/HoursChart";
 import { IncomeChart } from "../components/IncomeChart";
@@ -26,6 +26,8 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
   const payslips = useRecords(api.income);
   const shifts = useRecords(api.shifts);
   const [adding, setAdding] = useState(false);
+  // Why a calendar couldn't be linked to an employer that was just added; shown on that employer's page.
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
 
   const all = [employers, payslips, shifts];
   const ready = all.every((r) => r.status === "ready");
@@ -53,7 +55,11 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
         payslips={payslips}
         shifts={shifts}
         overview={data}
-        onBack={() => onOpenEmployer(null)}
+        notice={linkNotice}
+        onBack={() => {
+          setLinkNotice(null);
+          onOpenEmployer(null);
+        }}
       />
     );
   }
@@ -111,8 +117,9 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
               const created = await employers.add(input);
               setAdding(false);
               if (!link) return;
-              // The employer exists now; linking can still fail, in which case its page lets them try again.
-              await api.calendar.link(created.id, link).catch(() => undefined);
+              // The employer exists now; linking can still fail, in which case its page says why and lets them try again.
+              setLinkNotice(null);
+              await api.calendar.link(created.id, link).catch((err) => setLinkNotice(`The calendar wasn't linked. ${saveErrorText(err)}`));
               await employers.reload();
               onOpenEmployer(created.id);
             }}

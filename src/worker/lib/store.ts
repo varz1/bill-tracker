@@ -7,7 +7,8 @@ import type { z } from "zod";
 const BULK_GET_LIMIT = 100;
 
 export interface Store<T extends { id: string }> {
-  list(): Promise<T[]>;
+  /** Every record, or only those whose id starts with `idPrefix`. */
+  list(idPrefix?: string): Promise<T[]>;
   get(id: string): Promise<T | null>;
   put(record: T): Promise<void>;
   remove(id: string): Promise<void>;
@@ -20,11 +21,11 @@ export function createStore<T extends { id: string }>(
 ): Store<T> {
   const keyOf = (id: string) => `${prefix}:${id}`;
 
-  async function listKeys(): Promise<string[]> {
+  async function listKeys(idPrefix: string): Promise<string[]> {
     const keys: string[] = [];
     let cursor: string | undefined;
     do {
-      const page = await kv.list({ prefix: `${prefix}:`, cursor });
+      const page = await kv.list({ prefix: `${prefix}:${idPrefix}`, cursor });
       keys.push(...page.keys.map((k) => k.name));
       cursor = page.list_complete ? undefined : page.cursor;
     } while (cursor);
@@ -32,8 +33,8 @@ export function createStore<T extends { id: string }>(
   }
 
   return {
-    async list() {
-      const keys = await listKeys();
+    async list(idPrefix = "") {
+      const keys = await listKeys(idPrefix);
       const records: T[] = [];
       for (let i = 0; i < keys.length; i += BULK_GET_LIMIT) {
         const values = await kv.get<unknown>(keys.slice(i, i + BULK_GET_LIMIT), "json");

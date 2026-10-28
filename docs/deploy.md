@@ -32,6 +32,8 @@ Cloudflare dashboard → Workers & Pages → Create → Import a repository.
 
 Free-plan limits that matter: 10 ms of CPU per run, 50 outbound `fetch` calls and 1,000 KV calls per run, 1,000 KV writes a day. A sync only writes shifts that changed, and a cron run syncs at most 3 employers.
 
+A real deployment (not a public demo) should set `"DEMO": "false"` in `wrangler.jsonc` and `DEMO_MODE = false` in `src/web/config.ts`. The first makes the Worker keep calendars until they are unlinked and raises the limit on linked calendars; the second removes the demo banner and unlocks Settings. A public demo leaves the API open on purpose, so `DEMO: "true"` keeps its calendar use bounded: 3 linked calendars at a time, each removed after a day with its shifts, no more than one sync of an employer every 30 seconds.
+
 To try the schedule locally: `npx wrangler dev --test-scheduled`, then open `/cdn-cgi/handler/scheduled`.
 
 ## Access control

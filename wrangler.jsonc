@@ -11,6 +11,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // "true" makes this a public demo: the API stays open, but calendar links are capped and expire after a day
+  // (src/worker/lib/calendarSync.ts). Set it to "false" for a real deployment, together with DEMO_MODE in src/web/config.ts.
+  "vars": { "DEMO": "true" },
   // Calendar sync: every 15 minutes the Worker syncs the calendars that are due (src/worker/lib/calendarSync.ts).
   "triggers": { "crons": ["*/15 * * * *"] },
   // No namespace id on purpose: `wrangler deploy` provisions it automatically.

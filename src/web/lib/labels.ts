@@ -19,6 +19,11 @@ export function calendarErrorText(code: string): string {
       return "That link didn't return a calendar. Check it's the public link.";
     case "too_large":
       return "The calendar is too big to read.";
+    case "interrupted":
+      return "The last sync didn't finish, so it will try again. If this keeps happening, the calendar may be too big to read in time.";
+    case "bad_redirect":
+    case "too_many_redirects":
+      return "The calendar link sends you somewhere it can't follow.";
     case "empty_calendar":
       return "The calendar came back empty, so your shifts were kept. If you cleared your roster on purpose, unlink the calendar.";
     case "http_404":
@@ -40,4 +45,12 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours} h ago`;
   return `${Math.round(hours / 24)} days ago`;
+}
+
+/** "in 5 h", "in 20 min", or "soon" once it is due. */
+export function timeUntil(iso: string, now: number = Date.now()): string {
+  const minutes = Math.round((Date.parse(iso) - now) / 60_000);
+  if (minutes <= 1) return "soon";
+  if (minutes < 60) return `in ${minutes} min`;
+  return `in ${Math.round(minutes / 60)} h`;
 }

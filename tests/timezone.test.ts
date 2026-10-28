@@ -37,6 +37,22 @@ describe("instantOf", () => {
     expect((end - start) / 3_600_000).toBe(7);
   });
 
+  it("takes the first pass of a time that happens twice, as RFC 5545 says", () => {
+    // Sydney clocks go back at 3am on 5 Apr 2026 (to 2am), so 02:30 happens at 15:30Z and again at 16:30Z.
+    expect(instantOf(wall(2026, 4, 5, 2, 30), "Australia/Sydney")).toBe(Date.UTC(2026, 3, 4, 15, 30));
+  });
+
+  it("puts a time skipped by the clocks going forward just after the gap", () => {
+    // Sydney skips 02:00 to 03:00 on 4 Oct 2026, so 02:30 doesn't exist; 03:30 AEDT is 16:30Z the day before.
+    expect(instantOf(wall(2026, 10, 4, 2, 30), "Australia/Sydney")).toBe(Date.UTC(2026, 9, 3, 16, 30));
+  });
+
+  it("is not thrown by times either side of a change", () => {
+    expect(wallOf(instantOf(wall(2026, 4, 5, 1, 59), "Australia/Sydney"), "Australia/Sydney").time).toBe("01:59");
+    expect(wallOf(instantOf(wall(2026, 4, 5, 3, 0), "Australia/Sydney"), "Australia/Sydney").time).toBe("03:00");
+    expect(wallOf(instantOf(wall(2026, 10, 4, 3, 0), "Australia/Sydney"), "Australia/Sydney").time).toBe("03:00");
+  });
+
   it("works in UTC", () => {
     expect(instantOf(wall(2026, 1, 1, 0, 0), "UTC")).toBe(Date.UTC(2026, 0, 1));
   });

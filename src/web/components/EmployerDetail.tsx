@@ -23,6 +23,8 @@ interface Props {
   payslips: Records<Income, IncomeInput>;
   shifts: Records<Shift, ShiftInput>;
   overview: Overview;
+  /** A message to show at the top, such as why a calendar couldn't be linked. */
+  notice?: string | null;
   onBack(): void;
 }
 
@@ -40,7 +42,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 /** One employer's settings, numbers, payslips and shifts. Payslips and shifts are entered here. */
-export function EmployerDetail({ employer, employers, payslips, shifts, overview, onBack }: Props) {
+export function EmployerDetail({ employer, employers, payslips, shifts, overview, notice, onBack }: Props) {
   const { fmt } = useSettings();
   const [editing, setEditing] = useState<Editing>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -75,6 +77,12 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
         <ArrowLeft className="h-4 w-4" />
         Income
       </button>
+
+      {notice && (
+        <p role="alert" className="mb-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+          {notice}
+        </p>
+      )}
 
       <section className="mb-4 flex items-center gap-2 rounded-xl border border-ink/10 bg-white px-4 py-3 shadow-sm">
         <span className="inline-block h-3 w-3 shrink-0 rounded-sm" style={{ background: employer.color }} />

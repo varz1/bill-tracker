@@ -19,6 +19,16 @@ interface Props {
   onSubmit(input: EmployerInput, link?: CalendarLinkInput): Promise<void>;
 }
 
+/** Why a save failed, in words for the person using the form. */
+export function saveErrorText(err: unknown): string {
+  const code = err instanceof ApiError ? err.message : "";
+  if (code === "duplicate_name") return "You already have an employer with that name.";
+  if (code === "invalid_url") return "That link can't be used. It must be a public https:// or webcal:// link.";
+  if (code === "too_many_calendars") return "Only a few calendars can be linked at a time here. Unlink another one first.";
+  if (code === "too_soon") return "Please wait a few seconds and try again.";
+  return "Couldn't save. Please try again.";
+}
+
 export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
   const linked = employer?.sync === "calendar";
   const [name, setName] = useState(employer?.name ?? "");
@@ -59,13 +69,7 @@ export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
     try {
       await onSubmit(input, useCalendar && pasted ? { url: pasted, match: match.trim() || undefined } : undefined);
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? "You already have an employer with that name."
-          : err instanceof ApiError && err.message === "invalid_url"
-            ? "That link can't be used. It must be a public https:// or webcal:// link."
-            : "Couldn't save. Please try again.",
-      );
+      setError(saveErrorText(err));
       setBusy(false);
     }
   }
@@ -116,10 +120,7 @@ export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
           className={inputClass}
         >
           <option value="manual">{SYNC_LABELS.manual}</option>
-          <option value="calendar" disabled={DEMO_MODE}>
-            {SYNC_LABELS.calendar}
-            {DEMO_MODE ? " (not in the demo)" : ""}
-          </option>
+          <option value="calendar">{SYNC_LABELS.calendar}</option>
         </select>
         <span className={hintClass}>
           {linked
@@ -130,6 +131,12 @@ export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
 
       {useCalendar && (
         <>
+          {DEMO_MODE && (
+            <p role="note" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-800">
+              This is a public demo: everyone sees the same data. Use a test calendar, not your real roster. A calendar linked
+              here, and the shifts it brings in, is removed after a day.
+            </p>
+          )}
           <label className="block">
             <span className={labelClass}>{linked ? "Replace calendar link" : "Calendar link"}</span>
             <input

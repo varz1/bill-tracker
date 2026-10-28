@@ -21,12 +21,13 @@ Track recurring bills, shifts and income in one place. Single currency, single u
   - Times use the time zone the calendar names, falling back to the one in Settings.
   - It syncs in the background every 15 minutes or so, when you open the employer, and on "Sync now". If the calendar can't be read, or comes back empty, nothing is deleted.
   - Calendar shifts are read-only; change them in the calendar. Shifts you enter yourself are never touched. Unlinking either keeps the calendar's shifts as your own or deletes them.
+  - Shifts that have already happened are never deleted by a sync, even if the calendar stops listing them.
   - Repeating events aren't supported yet and are skipped.
 - Averages only use weeks that are fully paid, so shifts still waiting on a payslip don't drag them down. A fortnightly payslip counts in its second week.
 
 **General**
 - One currency, chosen in Settings. Amounts are stored as whole cents and never converted.
-- Demo mode shows a "made-up data" note, locks Settings and turns calendar sync off.
+- Demo mode shows a "made-up data" note and locks Settings. Calendar sync stays open to visitors, but only a few calendars can be linked at a time and each is removed after a day (set `DEMO` in `wrangler.jsonc`).
 
 ## Stack
 

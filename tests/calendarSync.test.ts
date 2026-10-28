@@ -4,8 +4,11 @@ import { EmployerSchema, ShiftSchema } from "../src/shared/schemas";
 import { createStore } from "../src/worker/lib/store";
 import {
   isDue,
+  limitsOf,
+  loadSource,
   loadState,
   MAX_PER_RUN,
+  removeLink,
   saveSource,
   saveState,
   syncDue,
@@ -41,7 +44,7 @@ async function addEmployer(over: Partial<Employer> = {}, source: { url?: string;
   return employer;
 }
 
-const shifts = () => createStore(env.BILL_DATA, "shift", ShiftSchema).list();
+const shifts = async () => (await createStore(env.BILL_DATA, "shift", ShiftSchema).list()).sort((a, b) => a.date.localeCompare(b.date));
 
 beforeEach(() => {
   kv = new FakeKV();
@@ -288,5 +291,186 @@ describe("syncDue", () => {
     await syncDue(env, NOW);
     expect((await shifts()).map((s) => s.employerId)).toEqual(["E2"]);
     expect((await loadState(kv as unknown as KVNamespace, "E1")).lastError).toBe("network");
+  });
+});
+
+describe("when a sync can't be trusted", () => {
+  const later = new Date(NOW.getTime() + 3_600_000);
+
+  it("says so when the last run never finished", async () => {
+    await addEmployer();
+    await saveState(env.BILL_DATA, "E1", { startedAt: new Date(NOW.getTime() - 120_000).toISOString(), lastSuccessAt: NOW.toISOString() });
+
+    let seen: string | undefined;
+    fetchMock.mockImplementationOnce(async () => {
+      seen = (await loadState(kv as unknown as KVNamespace, "E1")).lastError;
+      return Promise.reject(new DOMException("killed", "TimeoutError"));
+    });
+    await syncEmployer(env, "E1", later);
+    // Visible in the middle of the run, so it survives even if this run is stopped too.
+    expect(seen).toBe("interrupted");
+  });
+
+  it("drops what it found when the calendar was relinked meanwhile", async () => {
+    await addEmployer();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    fetchMock.mockImplementationOnce(async () => {
+      await gate;
+      return reply(feed(darwin("OLD-LINK", "20261101")));
+    });
+
+    const running = syncEmployer(env, "E1", NOW);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await saveSource(env.BILL_DATA, "E1", { url: "https://calendar.example.com/new.ics", linkedAt: "2026-10-28T03:00:00.000Z" });
+    await saveState(env.BILL_DATA, "E1", {});
+    release();
+
+    expect(await running).toEqual({ status: "unlinked" });
+    expect(await shifts()).toEqual([]);
+    expect(await loadState(kv as unknown as KVNamespace, "E1")).toEqual({});
+  });
+
+  it("doesn't bring back the status of a calendar that was unlinked meanwhile", async () => {
+    await addEmployer();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    fetchMock.mockImplementationOnce(async () => {
+      await gate;
+      return reply(feed(darwin("A", "20261101")));
+    });
+
+    const running = syncEmployer(env, "E1", NOW);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await removeLink(env.BILL_DATA, "E1");
+    release();
+
+    expect(await running).toEqual({ status: "unlinked" });
+    expect([...kv.data.keys()].filter((k) => k.startsWith("cal"))).toEqual([]);
+    expect(await shifts()).toEqual([]);
+  });
+
+  it("a half-finished import is due again soon, not in 45 minutes", async () => {
+    await addEmployer();
+    fetchMock.mockImplementation(async () => reply(feed(...Array.from({ length: 520 }, (_, i) => darwin(`E${i}`, "20261101")))));
+    expect(await syncEmployer(env, "E1", NOW)).toMatchObject({ partial: true });
+
+    const state = await loadState(kv as unknown as KVNamespace, "E1");
+    expect(state.lastSuccessAt).toBeUndefined();
+    expect(isDue(state, new Date(NOW.getTime() + 11 * 60_000))).toBe(true);
+  });
+});
+
+describe("shifts that have happened, and shifts the user kept", () => {
+  it("keeps a past shift the calendar stopped listing", async () => {
+    await addEmployer();
+    fetchMock.mockResolvedValueOnce(reply(feed(darwin("PAST", "20261020"), darwin("FUTURE", "20261101"))));
+    await syncEmployer(env, "E1", NOW);
+
+    fetchMock.mockResolvedValueOnce(reply(feed(darwin("FUTURE", "20261101"))));
+    await syncEmployer(env, "E1", new Date(NOW.getTime() + 3_600_000));
+    expect((await shifts()).map((s) => s.calendarUid)).toEqual(["PAST", "FUTURE"]);
+  });
+
+  it("doesn't write over a kept shift when the calendar is linked again", async () => {
+    await addEmployer();
+    await syncEmployer(env, "E1", NOW);
+    const store = createStore(env.BILL_DATA, "shift", ShiftSchema);
+    const [calendarShift] = await store.list();
+    await store.put({ ...calendarShift, source: "manual", calendarUid: undefined, hours: 3.5 });
+
+    fetchMock.mockClear();
+    await syncEmployer(env, "E1", new Date(NOW.getTime() + 86_400_000));
+    const after = await store.list();
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ source: "manual", hours: 3.5 });
+  });
+
+  it("reads only this employer's calendar shifts, not every shift", async () => {
+    await addEmployer();
+    const lists: (string | undefined)[] = [];
+    const list = kv.list.bind(kv);
+    vi.spyOn(kv, "list").mockImplementation(async (opts) => {
+      lists.push(opts?.prefix);
+      return list(opts);
+    });
+    await syncEmployer(env, "E1", NOW);
+    expect(lists.filter((p) => p?.startsWith("shift:"))).toEqual([expect.stringMatching(/^shift:cal-[0-9a-z]{22}-$/)]);
+  });
+});
+
+describe("following redirects", () => {
+  beforeEach(() => addEmployer());
+
+  it("follows a redirect to another public link, and fetches by hand", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url === URL ? new Response(null, { status: 302, headers: { location: "https://cdn.example.com/roster.ics" } }) : reply(feed(darwin("A", "20261101"))),
+    );
+    expect(await syncEmployer(env, "E1", NOW)).toMatchObject({ status: "ok", created: 1 });
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([URL, "https://cdn.example.com/roster.ics"]);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: "manual" });
+  });
+
+  it("follows a relative Location", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url === URL ? new Response(null, { status: 301, headers: { location: "/moved.ics" } }) : reply(feed(darwin("A", "20261101"))),
+    );
+    await syncEmployer(env, "E1", NOW);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://calendar.example.com/moved.ics");
+  });
+
+  it("refuses a redirect to somewhere that isn't a public https link", async () => {
+    for (const location of ["http://calendar.example.com/a.ics", "https://127.0.0.1/a.ics", "https://intranet/a.ics", "ftp://example.com/a.ics"]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(new Response(null, { status: 302, headers: { location } }));
+      expect(await syncEmployer(env, "E1", new Date(NOW.getTime() + Math.random() * 1e9))).toEqual({ status: "error", error: "bad_redirect" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("refuses a redirect with no destination, and a loop", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 302 }));
+    expect(await syncEmployer(env, "E1", NOW)).toEqual({ status: "error", error: "bad_redirect" });
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 302, headers: { location: URL } }));
+    expect(await syncEmployer(env, "E1", new Date(NOW.getTime() + 3_600_000))).toEqual({ status: "error", error: "too_many_redirects" });
+    expect(fetchMock.mock.calls.length).toBe(1 + 4);
+  });
+});
+
+describe("a public demo", () => {
+  const demo = () => ({ ...asEnv(kv), DEMO: "true" }) as unknown as Env;
+
+  it("is bounded only when asked to be", () => {
+    expect(limitsOf(demo())).toEqual({ maxLinked: 3, linkTtlMs: 86_400_000 });
+    expect(limitsOf(env).linkTtlMs).toBeNull();
+    expect(limitsOf({ ...asEnv(kv), DEMO: "false" } as unknown as Env).linkTtlMs).toBeNull();
+  });
+
+  it("removes a calendar and its shifts after a day, and leaves the employer and manual shifts", async () => {
+    await addEmployer({}, null);
+    await saveSource(env.BILL_DATA, "E1", { url: URL, linkedAt: NOW.toISOString() });
+    await syncEmployer(demo(), "E1", NOW);
+    const store = createStore(env.BILL_DATA, "shift", ShiftSchema);
+    await store.put({ id: "M1", employerId: "E1", date: "2026-11-05", hours: 2, source: "manual", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() });
+    expect(await store.list()).toHaveLength(2);
+
+    await syncDue(demo(), new Date(NOW.getTime() + 23 * 3_600_000));
+    expect(await store.list()).toHaveLength(2);
+
+    await syncDue(demo(), new Date(NOW.getTime() + 25 * 3_600_000));
+    expect((await store.list()).map((s) => s.id)).toEqual(["M1"]);
+    expect(await loadSource(env.BILL_DATA, "E1")).toBeNull();
+    const employer = await createStore(env.BILL_DATA, "employer", EmployerSchema).get("E1");
+    expect(employer?.sync).toBe("manual");
+  });
+
+  it("treats a link with no start time as expired, and never expires one outside the demo", async () => {
+    await addEmployer({}, { url: URL });
+    await syncDue(env, new Date(NOW.getTime() + 400 * 86_400_000));
+    expect(await loadSource(env.BILL_DATA, "E1")).not.toBeNull();
+
+    await syncDue(demo(), NOW);
+    expect(await loadSource(env.BILL_DATA, "E1")).toBeNull();
   });
 });

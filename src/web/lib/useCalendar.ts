@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarStatus } from "../../shared/schemas";
-import { api } from "./api";
+import { api, ApiError } from "./api";
 
 const POLL_MS = 2_000;
 /** Stop waiting for a sync after this long; the status still shows whatever happened. */
@@ -65,11 +65,13 @@ export function useCalendar(employerId: string, linked: boolean, onSynced: () =>
     try {
       await api.calendar.sync(employerId);
       setUnreachable(false);
-    } catch {
+    } catch (err) {
       setWaiting(false);
-      setUnreachable(true);
+      // "Too soon" means a sync has only just run; its result is what the status already shows.
+      if (err instanceof ApiError && err.status === 429) await refresh();
+      else setUnreachable(true);
     }
-  }, [employerId, expectSync, setWaiting]);
+  }, [employerId, expectSync, refresh, setWaiting]);
 
   useEffect(() => {
     if (!linked) {

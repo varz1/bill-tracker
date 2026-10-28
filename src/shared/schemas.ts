@@ -132,6 +132,8 @@ export type CalendarLinkInput = z.infer<typeof CalendarLinkInputSchema>;
 export const CalendarSourceSchema = z.object({
   url: z.string(),
   match: z.string().optional(),
+  /** When the link was made. A sync that started under an older link throws its result away. */
+  linkedAt: z.iso.datetime().optional(),
 });
 export type CalendarSource = z.infer<typeof CalendarSourceSchema>;
 
@@ -171,6 +173,8 @@ export interface CalendarStatus {
   url?: string;
   match?: string;
   syncing: boolean;
+  /** Set on a public demo, where a link is removed (with its shifts) after a day. */
+  expiresAt?: string;
   lastAttemptAt?: string;
   lastSuccessAt?: string;
   lastError?: string;

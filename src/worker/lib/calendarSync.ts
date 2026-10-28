@@ -1,6 +1,6 @@
 import { DEFAULT_BREAK_MINUTES } from "../../shared/breaks";
 import { parseCalendar, syncWindow } from "../../shared/calendar";
-import { maskCalendarUrl } from "../../shared/calendarUrl";
+import { maskCalendarUrl, normalizeCalendarUrl } from "../../shared/calendarUrl";
 import { todayIn } from "../../shared/dates";
 import {
   CalendarSourceSchema,
@@ -12,7 +12,7 @@ import {
   type CalendarStatus,
   type Shift,
 } from "../../shared/schemas";
-import { planSync } from "../../shared/syncPlan";
+import { calendarShiftPrefix, planSync } from "../../shared/syncPlan";
 import { loadSettings } from "../routes/settings";
 import { fingerprint } from "./hash";
 import { createStore } from "./store";
@@ -23,6 +23,7 @@ import { createStore } from "./store";
 /** A second trigger inside this long after a sync started does nothing. */
 const LEASE_MS = 60_000;
 const FETCH_TIMEOUT_MS = 8_000;
+const MAX_REDIRECTS = 3;
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 /** Shift writes per sync; a bigger change finishes over the next runs. */
 const MAX_WRITES = 500;
@@ -34,6 +35,18 @@ export const SYNC_EVERY_MS = 45 * 60_000;
 export const RETRY_AFTER_MS = 10 * 60_000;
 /** Employers synced per cron run; the free plan allows 10 ms of CPU for the whole run. */
 export const MAX_PER_RUN = 3;
+/** Nobody can start a sync, or change a link, on an employer more often than this. */
+export const MIN_GAP_MS = 30_000;
+
+/**
+ * A public demo has an open API, so calendar links are bounded instead of locked: only a few at a time, and
+ * each (with the shifts it brought in) is removed after a day. Switched on by the DEMO variable.
+ */
+export const isDemo = (env: Env) => String(env.DEMO) === "true";
+
+export function limitsOf(env: Env): { maxLinked: number; linkTtlMs: number | null } {
+  return isDemo(env) ? { maxLinked: 3, linkTtlMs: 24 * 3_600_000 } : { maxLinked: 20, linkTtlMs: null };
+}
 
 const sourceKey = (employerId: string) => `calsrc:${employerId}`;
 const stateKey = (employerId: string) => `calstate:${employerId}`;
@@ -61,20 +74,56 @@ export async function removeLink(kv: KVNamespace, employerId: string): Promise<v
 const isRunning = (state: CalendarState, now: Date) =>
   state.startedAt !== undefined && now.getTime() - Date.parse(state.startedAt) < LEASE_MS;
 
-export async function calendarStatus(kv: KVNamespace, employerId: string, now = new Date()): Promise<CalendarStatus> {
+/** True when a sync was started on this employer less than MIN_GAP_MS ago. */
+export const startedTooRecently = (state: CalendarState, now: Date) =>
+  state.lastAttemptAt !== undefined && now.getTime() - Date.parse(state.lastAttemptAt) < MIN_GAP_MS;
+
+const expiryOf = (env: Env, source: CalendarSource): number | null => {
+  const ttl = limitsOf(env).linkTtlMs;
+  if (ttl === null) return null;
+  return source.linkedAt ? Date.parse(source.linkedAt) + ttl : 0;
+};
+
+export async function calendarStatus(env: Env, employerId: string, now = new Date()): Promise<CalendarStatus> {
+  const kv = env.BILL_DATA;
   const [source, state] = await Promise.all([loadSource(kv, employerId), loadState(kv, employerId)]);
   if (!source) return { linked: false, syncing: false };
+  const expiry = expiryOf(env, source);
   return {
     linked: true,
     url: maskCalendarUrl(source.url),
     match: source.match,
     syncing: isRunning(state, now),
+    expiresAt: expiry ? new Date(expiry).toISOString() : undefined,
     lastAttemptAt: state.lastAttemptAt,
     lastSuccessAt: state.lastSuccessAt,
     lastError: state.lastError,
     zone: state.zone,
     result: state.result,
   };
+}
+
+/**
+ * Unlinks an employer's calendar. `keep` turns the shifts it brought in into the user's own; `delete`
+ * removes them. Shifts the user entered themselves are never touched.
+ */
+export async function unlinkCalendar(env: Env, employerId: string, shifts: "keep" | "delete", now = new Date()): Promise<void> {
+  const kv = env.BILL_DATA;
+  const store = createStore(kv, "shift", ShiftSchema);
+  // Everything marked as the calendar's, by whatever id, so nothing is left that can no longer be edited.
+  const mine = (await store.list()).filter((s) => s.employerId === employerId && s.source === "calendar");
+  const nowIso = now.toISOString();
+  for (let i = 0; i < mine.length; i += WRITE_CHUNK) {
+    await Promise.all(
+      mine.slice(i, i + WRITE_CHUNK).map((s) =>
+        shifts === "delete" ? store.remove(s.id) : store.put({ ...s, source: "manual", calendarUid: undefined, updatedAt: nowIso }),
+      ),
+    );
+  }
+  await removeLink(kv, employerId);
+  const employers = createStore(kv, "employer", EmployerSchema);
+  const employer = await employers.get(employerId);
+  if (employer) await employers.put({ ...employer, sync: "manual", updatedAt: nowIso });
 }
 
 export type SyncOutcome =
@@ -112,6 +161,32 @@ async function readCapped(res: Response, max: number): Promise<string | null> {
   return new TextDecoder().decode(bytes);
 }
 
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * Fetches the feed, following redirects by hand: every hop has to be a public https link again, so a
+ * link can't be bounced to somewhere it shouldn't go. One timeout covers all the hops.
+ */
+async function fetchFeed(url: string, headers: Record<string, string>): Promise<Response | { error: string }> {
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  let target = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await fetch(target, { headers, signal, redirect: "manual" });
+    if (!REDIRECTS.has(res.status)) return res;
+    const location = res.headers.get("location");
+    await res.body?.cancel();
+    let next: string | null = null;
+    try {
+      next = location ? normalizeCalendarUrl(new URL(location, target).toString()) : null;
+    } catch {
+      /* an unreadable Location is refused below */
+    }
+    if (!next) return { error: "bad_redirect" };
+    target = next;
+  }
+  return { error: "too_many_redirects" };
+}
+
 async function inChunks<T>(items: T[], run: (item: T) => Promise<unknown>) {
   for (let i = 0; i < items.length; i += WRITE_CHUNK) await Promise.all(items.slice(i, i + WRITE_CHUNK).map(run));
 }
@@ -128,7 +203,21 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
 
   const state = await loadState(kv, employerId);
   if (isRunning(state, now)) return { status: "busy" };
-  await saveState(kv, employerId, { ...state, startedAt: nowIso, lastAttemptAt: nowIso });
+  // A start mark that is still there, past its lease, means the last run never finished (the platform
+  // stopped it). Say so at once, so a run that keeps dying doesn't look like a calendar that's fine.
+  const interrupted = state.startedAt !== undefined;
+  await saveState(kv, employerId, {
+    ...state,
+    startedAt: nowIso,
+    lastAttemptAt: nowIso,
+    lastError: interrupted ? "interrupted" : state.lastError,
+  });
+
+  /** False once the calendar was unlinked or relinked: what this run found belongs to a link that is gone. */
+  const stillLinked = async () => {
+    const current = await loadSource(kv, employerId);
+    return current !== null && current.url === source.url && current.linkedAt === source.linkedAt;
+  };
 
   let outcome: SyncOutcome;
   let next: CalendarState = {};
@@ -138,6 +227,7 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
     console.error(err);
     outcome = { status: "error", error: "internal" };
   }
+  if (outcome.status === "unlinked" || !(await stillLinked())) return { status: "unlinked" };
   if (outcome.status === "error") next = { ...next, lastError: outcome.error };
 
   await saveState(kv, employerId, { ...state, ...next, lastAttemptAt: nowIso, startedAt: undefined });
@@ -161,7 +251,9 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
 
     let res: Response;
     try {
-      res = await fetch(source!.url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      const fetched = await fetchFeed(source!.url, headers);
+      if ("error" in fetched) return { outcome: { status: "error", error: fetched.error }, next: {} };
+      res = fetched;
     } catch (err) {
       const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
       return { outcome: { status: "error", error: timedOut ? "timeout" : "network" }, next: {} };
@@ -190,9 +282,10 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
     }
 
     const parsed = parseCalendar(text, { fallbackZone: settings.timeZone, breakRule, breakMinutes, match: source!.match, ...window });
+    // Only this employer's calendar-style ids, not every shift there is: the cost stays small as the data grows.
     const shiftStore = createStore(kv, "shift", ShiftSchema);
-    const existing = await shiftStore.list();
-    const plan = planSync(employerId, parsed.shifts, existing, window);
+    const existing = await shiftStore.list(calendarShiftPrefix(employerId));
+    const plan = planSync(employerId, parsed.shifts, existing, window, today);
 
     if (plan.suspiciousEmpty) {
       return { outcome: { status: "error", error: "empty_calendar" }, next: { zone: parsed.zone } };
@@ -208,6 +301,8 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
     const doDeletes = plan.delete.slice(0, Math.max(0, MAX_WRITES - doWrites.length));
     const partial = doWrites.length < writes.length || doDeletes.length < plan.delete.length;
 
+    // The link may have changed while the feed was being read and worked through; don't write for one that is gone.
+    if (!(await stillLinked())) return { outcome: { status: "unlinked" }, next: {} };
     await inChunks(doWrites, (s) => shiftStore.put(s));
     await inChunks(doDeletes, (id) => shiftStore.remove(id));
 
@@ -215,9 +310,8 @@ export async function syncEmployer(env: Env, employerId: string, now = new Date(
     return {
       outcome: { status: "ok", created: plan.create.length, updated: plan.update.length, deleted: doDeletes.length, unchanged: plan.unchanged, partial },
       next: {
-        ...keep,
-        // A partial run must not look finished: leave out what would let the next run skip the work.
-        ...(partial ? { configSig: undefined } : { ...validators, bodySig }),
+        // A partial run is not a finished sync: no success time, so the cron comes back for the rest soon.
+        ...(partial ? { lastError: undefined, configSig: undefined } : { ...keep, ...validators, bodySig }),
         zone: parsed.zone,
         result: {
           created: plan.create.length,
@@ -239,10 +333,28 @@ export function isDue(state: CalendarState, now: Date): boolean {
   return true;
 }
 
-/** The cron's work: sync the employers that are due, longest-waiting first. */
+/** On a public demo: unlinks (and deletes the shifts of) every calendar whose day is up. Returns their ids. */
+async function expireLinks(env: Env, employerIds: string[], now: Date): Promise<Set<string>> {
+  const expired = new Set<string>();
+  if (limitsOf(env).linkTtlMs === null) return expired;
+  for (const id of employerIds) {
+    const source = await loadSource(env.BILL_DATA, id);
+    const expiry = source ? expiryOf(env, source) : null;
+    if (source && expiry !== null && now.getTime() >= expiry) {
+      await unlinkCalendar(env, id, "delete", now);
+      console.log(JSON.stringify({ event: "calendar_expired", employerId: id }));
+      expired.add(id);
+    }
+  }
+  return expired;
+}
+
+/** The cron's work: drop expired demo links, then sync the employers that are due, longest-waiting first. */
 export async function syncDue(env: Env, now = new Date()): Promise<void> {
   const kv = env.BILL_DATA;
-  const employers = (await createStore(kv, "employer", EmployerSchema).list()).filter((e) => e.sync === "calendar");
+  const linked = (await createStore(kv, "employer", EmployerSchema).list()).filter((e) => e.sync === "calendar");
+  const expired = await expireLinks(env, linked.map((e) => e.id), now);
+  const employers = linked.filter((e) => !expired.has(e.id));
   const states = await Promise.all(employers.map((e) => loadState(kv, e.id)));
   const due = employers
     .map((employer, i) => ({ employer, state: states[i] }))

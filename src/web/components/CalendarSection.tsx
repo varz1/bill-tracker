@@ -1,6 +1,6 @@
 import { CalendarDays, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { calendarErrorText, timeAgo } from "../lib/labels";
+import { calendarErrorText, timeAgo, timeUntil } from "../lib/labels";
 import type { CalendarControl } from "../lib/useCalendar";
 
 interface Props {
@@ -78,7 +78,9 @@ export function CalendarSection({ calendar, onUnlink }: Props) {
                 {status.result && ` · ${changeSummary(status.result)}`}
               </p>
             ) : (
-              <p className="text-ink/40">{syncing ? "Reading your calendar…" : "Not synced yet."}</p>
+              <p className="text-ink/40">
+                {syncing ? "Reading your calendar…" : status.result ? "Still importing your calendar…" : "Not synced yet."}
+              </p>
             )}
             {unreachable && (
               <p role="alert" className="text-red-600">
@@ -88,6 +90,11 @@ export function CalendarSection({ calendar, onUnlink }: Props) {
             {status.zone && (
               <p className="text-ink/40">
                 Times are in {status.zone.name} ({ZONE_NOTES[status.zone.source]}).
+              </p>
+            )}
+            {status.expiresAt && (
+              <p className="text-amber-700">
+                Demo: this calendar and its shifts are removed {timeUntil(status.expiresAt)}.
               </p>
             )}
             {status.result && status.result.recurring > 0 && (
