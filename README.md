@@ -28,7 +28,7 @@ Track recurring bills, shifts and income in one place. Single currency, single u
 **General**
 - One currency, chosen in Settings. Amounts are stored as whole cents and never converted.
 - Demo mode (the `DEMO` variable in `wrangler.jsonc`) shows a "made-up data" note and locks Settings. Calendar sync stays open to visitors, but only a few calendars can be linked at a time and each is removed after a day.
-- The Income page can show all employers or just one (a picker above the stats, remembered in the browser). An employer's own page always counts only its own payslips and shifts. In "All", an employer with shifts that no payslip covers keeps later weeks out of the pay stats, and a note says which employer and since when.
+- Pay stats settle each employer on their own: an employer whose shifts no payslip covers only keeps their own later weeks out of the stats, and a note on the Income page says who and since when. The page can show all employers or just one (a picker above the stats, remembered in the browser), and an employer's own page counts only their payslips and shifts.
 - An employer can be deleted together with its shifts, payslips and calendar link, after a confirmation that says how many.
 
 ## Stack

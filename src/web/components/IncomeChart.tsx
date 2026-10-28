@@ -6,13 +6,15 @@ import { ChartTooltip, TooltipRow } from "./ChartTooltip";
 
 interface Props {
   weeks: IncomeWeek[];
-  settledUntil: string;
+  /** The day each employer's pay is counted up to; their later weeks are drawn faded. */
+  settledByEmployer: Record<string, string>;
   employers: Employer[];
 }
 
 interface Row {
   label: string;
   week: IncomeWeek;
+  /** False when any employer's pay in this week is still waiting to count. */
   settled: boolean;
   [employerKey: string]: unknown;
 }
@@ -20,28 +22,31 @@ interface Row {
 const AXIS = { fontSize: 10, fill: "#898781" };
 
 /** Gross pay per week, stacked by employer. Weeks that still have wages outstanding are drawn faded. */
-export function IncomeChart({ weeks, settledUntil, employers }: Props) {
+export function IncomeChart({ weeks, settledByEmployer, employers }: Props) {
   const { fmt } = useSettings();
   // Recharts reads values by key path, so use plain index keys rather than ids or names.
   const active = employers.filter((e) => weeks.some((w) => (w.byEmployer[e.id]?.gross ?? 0) > 0));
   const keyOf = (employer: Employer) => `e${employers.indexOf(employer)}`;
 
+  const counted = (week: IncomeWeek, id: string) => weekEnd(week.weekStart) <= (settledByEmployer[id] ?? "0000-00-00");
+
   const data: Row[] = weeks.map((week) => ({
     label: fmt.date(week.weekStart),
     week,
-    settled: weekEnd(week.weekStart) <= settledUntil,
+    settled: Object.keys(week.byEmployer).every((id) => counted(week, id)),
     ...Object.fromEntries(active.map((e) => [keyOf(e), (week.byEmployer[e.id]?.gross ?? 0) / 100])),
   }));
 
-  const fade = (props: BarShapeProps) => (
-    <Rectangle {...props} fillOpacity={(props.payload as Row).settled ? 1 : 0.35} />
+  // Each employer's bar is faded on its own, so one employer's unpaid weeks don't fade another's.
+  const fadeFor = (employerId: string) => (props: BarShapeProps) => (
+    <Rectangle {...props} fillOpacity={counted((props.payload as Row).week, employerId) ? 1 : 0.35} />
   );
 
   return (
     <section className="mb-4 rounded-xl border border-ink/10 bg-white p-4 shadow-sm">
       <h2 className="mb-1 text-sm font-medium">Gross pay by week</h2>
       <p className="mb-3 text-[10px] text-ink/35">
-        A fortnightly payslip is shown in full in the second week. Faded weeks still have wages outstanding and are left
+        A fortnightly payslip is shown in full in the second week. Faded bars still have wages outstanding and are left
         out of the stats.
       </p>
       <Legend employers={active} />
@@ -65,7 +70,7 @@ export function IncomeChart({ weeks, settledUntil, employers }: Props) {
                 const present = active.filter((e) => row.week.byEmployer[e.id]);
                 return (
                   <ChartTooltip title={`Week of ${fmt.date(row.week.weekStart)}`}>
-                    {!row.settled && <div className="mb-1 text-[10px] text-paper/50">Wages outstanding, not in stats</div>}
+                    {!row.settled && <div className="mb-1 text-[10px] text-paper/50">Some wages outstanding, not in stats</div>}
                     {present.length === 0 && <div className="text-paper/60">No pay</div>}
                     {present.map((e) => (
                       <TooltipRow
@@ -91,7 +96,7 @@ export function IncomeChart({ weeks, settledUntil, employers }: Props) {
                 dataKey={keyOf(e)}
                 stackId="gross"
                 fill={e.color}
-                shape={fade}
+                shape={fadeFor(e.id)}
                 isAnimationActive={false}
                 radius={i === active.length - 1 ? [3, 3, 0, 0] : 0}
               />

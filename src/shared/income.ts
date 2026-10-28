@@ -110,24 +110,22 @@ export function hoursBetween(start: string, end: string): number | null {
 export const lastFinishedDay = (today: IsoDate, weekStartsOn: WeekStart): IsoDate =>
   addDays(weekStart(today, weekStartsOn), -1);
 
-/** What is keeping the pay stats from reaching the last finished week: one employer's shifts that no payslip covers. */
-export interface HeldBack {
-  employerId: string;
-  /** The date of that employer's earliest finished shift that no payslip covers. */
-  since: IsoDate;
+/** A shift unpaid for less than this is just the usual wait for payday, not worth pointing out. */
+const PAY_LAG_DAYS = 28;
+
+export interface Settlement {
+  /** The last day up to which every shift worked has been paid. */
+  settled: IsoDate;
+  /** The earliest finished shift that no payslip covers, or null when every finished shift is covered. */
+  unpaidSince: IsoDate | null;
 }
 
 /**
- * The last day up to which every shift worked has been paid. Weeks after this date still have wages
- * outstanding, so averaging them would drag the numbers down; charts fade them and stats skip them.
- * `heldBack` names the employer whose unpaid shifts set that day, or is null when nothing does.
+ * Works out how far the wages have been paid, from the payslips and shifts it is given. Weeks after
+ * `settled` still have wages outstanding, so averaging them would drag the numbers down; charts fade them
+ * and stats skip them. Give it one employer's records to get that employer's own answer.
  */
-export function settlement(
-  income: Income[],
-  shifts: Shift[],
-  today: IsoDate,
-  weekStartsOn: WeekStart,
-): { settled: IsoDate; heldBack: HeldBack | null } {
+export function settlement(income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): Settlement {
   const lastPaidEnd: Record<string, IsoDate> = {};
   for (const slip of income) {
     if (slip.payDate > today) continue;
@@ -136,26 +134,55 @@ export function settlement(
     }
   }
 
-  let cutoff = lastFinishedDay(today, weekStartsOn);
-  let holder: string | null = null;
-  const firstUnpaid: Record<string, IsoDate> = {};
+  const finished = lastFinishedDay(today, weekStartsOn);
+  let cutoff = finished;
+  let unpaidSince: IsoDate | null = null;
   for (const shift of shifts) {
-    if (shift.date > lastFinishedDay(today, weekStartsOn)) continue;
+    if (shift.date > finished) continue;
     const paidEnd = lastPaidEnd[shift.employerId];
     if (paidEnd && shift.date <= paidEnd) continue;
-    if (!firstUnpaid[shift.employerId] || shift.date < firstUnpaid[shift.employerId]) firstUnpaid[shift.employerId] = shift.date;
+    if (unpaidSince === null || shift.date < unpaidSince) unpaidSince = shift.date;
     // Worked but not yet paid: nothing from the start of that week onward is settled.
     const owedFrom = addDays(weekStart(shift.date, weekStartsOn), -1);
-    if (owedFrom < cutoff) {
-      cutoff = owedFrom;
-      holder = shift.employerId;
-    }
+    if (owedFrom < cutoff) cutoff = owedFrom;
   }
-  return { settled: cutoff, heldBack: holder ? { employerId: holder, since: firstUnpaid[holder] } : null };
+  return { settled: cutoff, unpaidSince };
 }
 
 export const settledUntil = (income: Income[], shifts: Shift[], today: IsoDate, weekStartsOn: WeekStart): IsoDate =>
   settlement(income, shifts, today, weekStartsOn).settled;
+
+/** Each employer's own settlement, so one employer's unpaid shifts never hold back another's numbers. */
+export function settlements(
+  employerIds: string[],
+  income: Income[],
+  shifts: Shift[],
+  today: IsoDate,
+  weekStartsOn: WeekStart,
+): Record<string, Settlement> {
+  const result: Record<string, Settlement> = {};
+  for (const id of new Set([...employerIds, ...income.map((p) => p.employerId), ...shifts.map((s) => s.employerId)])) {
+    result[id] = settlement(
+      income.filter((p) => p.employerId === id),
+      shifts.filter((x) => x.employerId === id),
+      today,
+      weekStartsOn,
+    );
+  }
+  return result;
+}
+
+/** One cut-off date for everyone, or one per employer id. */
+export type Settled = IsoDate | Record<string, IsoDate>;
+
+const settledOf = (settled: Settled, employerId: string): IsoDate =>
+  typeof settled === "string" ? settled : (settled[employerId] ?? "0000-00-00");
+
+/** An employer with finished shifts that no payslip covers, for long enough that it isn't just waiting for payday. */
+export interface HeldBack {
+  employerId: string;
+  since: IsoDate;
+}
 
 // ---- Statistics ------------------------------------------------------------
 
@@ -169,14 +196,26 @@ export interface IncomeStats {
   grossByEmployer: Record<string, number>;
 }
 
-export function incomeStats(weeks: IncomeWeek[], settled: IsoDate): IncomeStats {
-  const counted = weeks.filter((w) => weekEnd(w.weekStart) <= settled);
+/**
+ * Totals the settled weeks. With one date, every employer is counted up to it. With one date per employer,
+ * each employer is counted up to their own, and a week counts once any employer with pay is settled through it.
+ */
+export function incomeStats(weeks: IncomeWeek[], settled: Settled): IncomeStats {
+  const reach =
+    typeof settled === "string"
+      ? settled
+      : weeks.reduce((latest, w) => {
+          const ends = Object.keys(w.byEmployer).map((id) => settledOf(settled, id));
+          return ends.reduce((a, b) => (b > a ? b : a), latest);
+        }, "0000-00-00");
+  const counted = weeks.filter((w) => weekEnd(w.weekStart) <= reach);
   const stats: IncomeStats = { weeks: counted.length, gross: 0, net: 0, tax: 0, avgNet: null, grossByEmployer: {} };
   for (const w of counted) {
-    stats.gross += w.gross;
-    stats.net += w.net;
-    stats.tax += w.tax;
     for (const [employer, e] of Object.entries(w.byEmployer)) {
+      if (weekEnd(w.weekStart) > settledOf(settled, employer)) continue;
+      stats.gross += e.gross;
+      stats.net += e.net;
+      stats.tax += e.tax;
       stats.grossByEmployer[employer] = (stats.grossByEmployer[employer] ?? 0) + e.gross;
     }
   }
@@ -203,7 +242,7 @@ export function hourStats(
   shifts: Shift[],
   income: Income[],
   stats: IncomeStats,
-  settled: IsoDate,
+  settled: Settled,
   today: IsoDate,
   weekStartsOn: WeekStart,
 ): HourStats {
@@ -216,7 +255,7 @@ export function hourStats(
     if (shift.date > finished) continue;
     totalHours += shift.hours;
     hoursByEmployer[shift.employerId] = (hoursByEmployer[shift.employerId] ?? 0) + shift.hours;
-    const covered = shift.date <= settled && income.some(
+    const covered = shift.date <= settledOf(settled, shift.employerId) && income.some(
       (s) => s.employerId === shift.employerId && shift.date >= s.periodStart && shift.date <= s.periodEnd,
     );
     if (covered) billable[shift.employerId] = (billable[shift.employerId] ?? 0) + shift.hours;
@@ -253,9 +292,12 @@ export interface Overview {
   incomeWeeks: IncomeWeek[];
   /** Weeks up to and including the current one, so upcoming rostered weeks aren't charted. */
   shiftWeeks: ShiftWeek[];
+  /** The last day any employer's pay is counted up to. */
   settledUntil: IsoDate;
-  /** Whose unpaid shifts keep later weeks out of the pay stats, if anyone's do. */
-  heldBack: HeldBack | null;
+  /** The day each employer's pay is counted up to. Later weeks of theirs still have wages outstanding. */
+  settledByEmployer: Record<string, IsoDate>;
+  /** Employers whose unpaid shifts keep their own later weeks out of the pay stats. */
+  heldBack: HeldBack[];
   stats: IncomeStats;
   hours: HourStats;
   /** Employers sorted by name; charts draw and stack them in this order. */
@@ -269,17 +311,25 @@ export function overview(
   today: IsoDate,
   weekStartsOn: WeekStart,
 ): Overview {
-  const { settled, heldBack } = settlement(income, shifts, today, weekStartsOn);
+  const per = settlements(employers.map((e) => e.id), income, shifts, today, weekStartsOn);
+  const settledByEmployer = Object.fromEntries(Object.entries(per).map(([id, p]) => [id, p.settled]));
   const weeks = incomeWeeks(income, weekStartsOn);
-  const stats = incomeStats(weeks, settled);
+  const stats = incomeStats(weeks, settledByEmployer);
   const currentWeek = weekStart(today, weekStartsOn);
+  const payers = new Set(income.map((p) => p.employerId));
+  const reach = [...payers].reduce((latest, id) => (settledByEmployer[id] > latest ? settledByEmployer[id] : latest), "0000-00-00");
+  const longUnpaid = addDays(today, -PAY_LAG_DAYS);
   return {
     incomeWeeks: weeks,
     shiftWeeks: shiftWeeks(shifts, weekStartsOn).filter((w) => w.weekStart <= currentWeek),
-    settledUntil: settled,
-    heldBack,
+    settledUntil: payers.size > 0 ? reach : lastFinishedDay(today, weekStartsOn),
+    settledByEmployer,
+    heldBack: Object.entries(per)
+      .filter(([, p]) => p.unpaidSince !== null && p.unpaidSince < longUnpaid)
+      .map(([employerId, p]) => ({ employerId, since: p.unpaidSince! }))
+      .sort((a, b) => (a.since < b.since ? -1 : 1)),
     stats,
-    hours: hourStats(shifts, income, stats, settled, today, weekStartsOn),
+    hours: hourStats(shifts, income, stats, settledByEmployer, today, weekStartsOn),
     employers: [...employers].sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

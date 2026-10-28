@@ -108,8 +108,8 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
       {hasPay || hasShifts ? (
         <>
           <ScopePicker employers={data.employers} value={scope} onChange={setScope} />
-          <IncomeStats overview={shown} onlyOne={scope !== null} />
-          {hasPay && <IncomeChart weeks={shown.incomeWeeks} settledUntil={shown.settledUntil} employers={shown.employers} />}
+          <IncomeStats overview={shown} />
+          {hasPay && <IncomeChart weeks={shown.incomeWeeks} settledByEmployer={shown.settledByEmployer} employers={shown.employers} />}
           {hasShifts && <HoursChart weeks={shown.shiftWeeks} employers={shown.employers} />}
         </>
       ) : (

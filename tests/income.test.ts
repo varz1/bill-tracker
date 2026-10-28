@@ -9,6 +9,7 @@ import {
   scopeTo,
   settledUntil,
   settlement,
+  settlements,
   shiftWeeks,
   weekStart,
 } from "../src/shared/income";
@@ -225,26 +226,53 @@ describe("overview", () => {
 });
 
 describe("settlement", () => {
-  it("names the employer whose unpaid shifts hold the stats back, and since when", () => {
-    const income = [slip({ payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11" })];
-    const shifts = [shift("2026-10-06", 8), shift("2026-07-10", 7.5, "hotel"), shift("2026-08-03", 7.5, "hotel")];
-    expect(settlement(income, shifts, TODAY, 1)).toEqual({
-      settled: "2026-07-05",
-      heldBack: { employerId: "hotel", since: "2026-07-10" },
-    });
+  it("is where the pay stops being settled, and the first shift nobody has paid for", () => {
+    const shifts = [shift("2026-07-10", 7.5, "hotel"), shift("2026-08-03", 7.5, "hotel")];
+    expect(settlement([], shifts, TODAY, 1)).toEqual({ settled: "2026-07-05", unpaidSince: "2026-07-10" });
   });
 
-  it("holds nothing back when everything worked has been paid", () => {
+  it("has no unpaid shift when everything worked has been paid", () => {
     const income = [slip({ payDate: "2026-10-21", periodStart: "2026-10-12", periodEnd: "2026-10-18" })];
-    expect(settlement(income, [shift("2026-10-13", 8)], TODAY, 1).heldBack).toBeNull();
+    expect(settlement(income, [shift("2026-10-13", 8)], TODAY, 1).unpaidSince).toBeNull();
   });
 
   it("ignores the current, unfinished week", () => {
-    expect(settlement([], [shift("2026-10-22", 8)], TODAY, 1).heldBack).toBeNull();
+    expect(settlement([], [shift("2026-10-22", 8)], TODAY, 1).unpaidSince).toBeNull();
   });
 });
 
-describe("scopeTo", () => {
+describe("settlements and incomeStats with one date per employer", () => {
+  const income = [
+    slip({ payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11" }),
+    slip({ payDate: "2026-10-21", periodStart: "2026-10-12", periodEnd: "2026-10-18" }),
+  ];
+  const shifts = [shift("2026-10-06", 8), shift("2026-10-13", 8), shift("2026-07-10", 7.5, "hotel")];
+
+  it("settles each employer on their own", () => {
+    const per = settlements(["shop", "hotel"], income, shifts, TODAY, 1);
+    expect(per.shop).toEqual({ settled: "2026-10-18", unpaidSince: null });
+    expect(per.hotel).toEqual({ settled: "2026-07-05", unpaidSince: "2026-07-10" });
+  });
+
+  it("counts a paid employer's weeks even though another has nothing paid", () => {
+    const weeks = incomeWeeks(income, 1);
+    const stats = incomeStats(weeks, { shop: "2026-10-18", hotel: "2026-07-05" });
+    expect(stats).toMatchObject({ weeks: 2, gross: 200000, grossByEmployer: { shop: 200000 } });
+  });
+
+  it("leaves out an employer's weeks past their own date while counting the others'", () => {
+    const hotel = slip({ employerId: "hotel", payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11", gross: 50000, net: 40000, tax: 10000 });
+    const stats = incomeStats(incomeWeeks([...income, hotel], 1), { shop: "2026-10-18", hotel: "2026-10-04" });
+    expect(stats.grossByEmployer).toEqual({ shop: 200000 });
+    expect(stats.weeks).toBe(2);
+  });
+
+  it("with one date for everyone, behaves as before", () => {
+    expect(incomeStats(incomeWeeks(income, 1), "2026-10-11")).toMatchObject({ weeks: 1, gross: 100000 });
+  });
+});
+
+describe("overview across employers", () => {
   const employers = (["shop", "hotel"] as const).map((id) => ({ id, name: id, color: "#000", contract: "casual", sync: "manual", ...META }) as Employer);
   const income = [slip({ payDate: "2026-10-14", periodStart: "2026-10-05", periodEnd: "2026-10-11" })];
   const shifts = [shift("2026-10-06", 8), shift("2026-07-10", 7.5, "hotel")];
@@ -253,21 +281,41 @@ describe("scopeTo", () => {
     return overview(scoped.employers, scoped.income, scoped.shifts, TODAY, 1);
   };
 
-  it("all employers: an employer with no payslip keeps the paid one out of the stats", () => {
-    expect(run(null).stats.weeks).toBe(0);
-    expect(run(null).heldBack).toMatchObject({ employerId: "hotel" });
+  it("an employer with no payslip doesn't hold back the others, and is pointed out", () => {
+    const all = run(null);
+    expect(all.stats).toMatchObject({ weeks: 1, gross: 100000 });
+    expect(all.heldBack).toEqual([{ employerId: "hotel", since: "2026-07-10" }]);
+    expect(all.settledUntil).toBe("2026-10-18");
   });
 
-  it("one employer: its numbers don't depend on the others", () => {
+  it("one employer: its numbers are the same as in the total", () => {
     const shop = run("shop");
     expect(shop.stats).toMatchObject({ weeks: 1, gross: 100000 });
-    expect(shop.heldBack).toBeNull();
+    expect(shop.heldBack).toEqual([]);
     expect(shop.employers.map((e) => e.id)).toEqual(["shop"]);
   });
 
   it("an employer with no payslips shows nothing paid, and says why", () => {
     const hotel = run("hotel");
     expect(hotel.stats.weeks).toBe(0);
-    expect(hotel.heldBack).toEqual({ employerId: "hotel", since: "2026-07-10" });
+    expect(hotel.heldBack).toEqual([{ employerId: "hotel", since: "2026-07-10" }]);
+  });
+
+  it("doesn't point out shifts that are only waiting for payday", () => {
+    const recent = overview(employers, [], [shift("2026-10-14", 8, "hotel")], TODAY, 1);
+    expect(recent.heldBack).toEqual([]);
+  });
+
+  it("hours in a week that is only partly paid don't count toward the rate", () => {
+    // The payslip covers Mon-Wed of the week of Oct 5; Thursday's shift is unpaid, so that week isn't settled.
+    const partial = [slip({ payDate: "2026-10-12", periodStart: "2026-09-28", periodEnd: "2026-10-07" })];
+    const o = overview(employers, partial, [shift("2026-10-06", 8), shift("2026-10-08", 8)], TODAY, 1);
+    expect(o.hours.rateByEmployer.shop).toBeNull();
+  });
+
+  it("hourly rates use each employer's own paid hours", () => {
+    const all = run(null);
+    expect(all.hours.rateByEmployer.shop).toBe(Math.round(100000 / 8));
+    expect(all.hours.rateByEmployer.hotel).toBeNull();
   });
 });
