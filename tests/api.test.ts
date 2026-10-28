@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import app from "../src/worker/index";
+import { app } from "../src/worker/index";
 import { asEnv, FakeKV } from "./helpers/fakeKv";
 
 type Item = { id: string; createdAt: string; updatedAt: string } & Record<string, unknown>;
@@ -237,15 +237,20 @@ describe("income", () => {
 describe("settings", () => {
   it("returns defaults until changed, then merges patches", async () => {
     const initial = (await (await call("/api/settings")).json()) as { settings: Record<string, unknown> };
-    expect(initial.settings).toEqual({ currency: "AUD", weekStartsOn: 1 });
+    expect(initial.settings).toEqual({ currency: "AUD", weekStartsOn: 1, timeZone: "Australia/Sydney" });
 
     await call("/api/settings", { method: "PATCH", body: { currency: "USD", weekStartsOn: 0 } });
     const after = (await (await call("/api/settings")).json()) as { settings: Record<string, unknown> };
-    expect(after.settings).toEqual({ currency: "USD", weekStartsOn: 0 });
+    expect(after.settings).toEqual({ currency: "USD", weekStartsOn: 0, timeZone: "Australia/Sydney" });
   });
 
   it("rejects an invalid currency code", async () => {
     expect((await call("/api/settings", { method: "PATCH", body: { currency: "dollars" } })).status).toBe(400);
+  });
+
+  it("accepts an IANA time zone and rejects anything else", async () => {
+    expect((await call("/api/settings", { method: "PATCH", body: { timeZone: "Australia/Darwin" } })).status).toBe(200);
+    expect((await call("/api/settings", { method: "PATCH", body: { timeZone: "Darwin time" } })).status).toBe(400);
   });
 });
 

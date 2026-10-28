@@ -23,6 +23,8 @@ interface CrudOptions<T extends Meta, I, P> {
   check?(c: Context<AppEnv>, record: T): Promise<Response | null>;
   /** Called before a record is deleted; return a response to refuse. */
   beforeDelete?(c: Context<AppEnv>, id: string): Promise<Response | null>;
+  /** Called with the stored record before it is updated or deleted; return a response to refuse. */
+  guard?(c: Context<AppEnv>, existing: T): Promise<Response | null>;
 }
 
 /** Reads and validates a JSON body. Returns a 400 response on failure. */
@@ -68,6 +70,8 @@ export function crudRoutes<T extends Meta, I, P extends object>(opts: CrudOption
     if (body instanceof Response) return body;
     const existing = await store(c).get(c.req.param("id"));
     if (!existing) return c.json({ error: "not_found" }, 404);
+    const guarded = await opts.guard?.(c, existing);
+    if (guarded) return guarded;
     const merged = opts.schema.safeParse({
       ...existing,
       ...body,
@@ -83,6 +87,9 @@ export function crudRoutes<T extends Meta, I, P extends object>(opts: CrudOption
   });
 
   app.delete("/:id", async (c) => {
+    const existing = opts.guard ? await store(c).get(c.req.param("id")) : null;
+    const guarded = existing ? await opts.guard?.(c, existing) : null;
+    if (guarded) return guarded;
     const refused = await opts.beforeDelete?.(c, c.req.param("id"));
     if (refused) return refused;
     await store(c).remove(c.req.param("id"));

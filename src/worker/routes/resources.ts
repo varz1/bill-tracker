@@ -13,6 +13,7 @@ import {
   ShiftPatchSchema,
   ShiftSchema,
 } from "../../shared/schemas";
+import { loadSource } from "../lib/calendarSync";
 import { crudRoutes } from "../lib/crud";
 import { createStore } from "../lib/store";
 
@@ -40,9 +41,14 @@ export const employers = crudRoutes({
     if (existing.some((e) => e.id !== record.id && sameName(e.name, record.name))) {
       return c.json({ error: "duplicate_name" }, 409);
     }
+    // The calendar link is managed through /api/employers/:id/calendar, so `sync` can't drift from it.
+    const linked = (await loadSource(c.env.BILL_DATA, record.id)) !== null;
+    if (record.sync === "calendar" && !linked) return c.json({ error: "no_calendar" }, 400);
+    if (record.sync !== "calendar" && linked) return c.json({ error: "calendar_linked" }, 409);
     return null;
   },
   beforeDelete: async (c, id) => {
+    if (await loadSource(c.env.BILL_DATA, id)) return c.json({ error: "calendar_linked" }, 409);
     const [shiftList, slipList] = await Promise.all([
       createStore(c.env.BILL_DATA, "shift", ShiftSchema).list(),
       createStore(c.env.BILL_DATA, "income", IncomeSchema).list(),
@@ -61,6 +67,8 @@ export const shifts = crudRoutes({
   patchSchema: ShiftPatchSchema,
   // Shifts created through the API are always manual; only the calendar sync writes "calendar" ones.
   create: (input, meta) => ({ ...input, source: "manual" as const, ...meta }),
+  // Calendar shifts follow the calendar: change them there, or unlink the calendar to take them over.
+  guard: async (c, existing) => (existing.source === "calendar" ? c.json({ error: "calendar_managed" }, 403) : null),
   check: async (c, record) =>
     (await employerStore(c.env).get(record.employerId)) ? null : c.json({ error: "unknown_employer" }, 400),
 });

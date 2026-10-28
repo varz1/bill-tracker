@@ -14,7 +14,11 @@ Schemas live in [`src/shared/schemas.ts`](../src/shared/schemas.ts) and are shar
 | GET / PATCH / DELETE | `/api/shifts/:id` | |
 | GET / POST | `/api/income` | one record per payslip, needs an existing `employerId` |
 | GET / PATCH / DELETE | `/api/income/:id` | |
-| GET / PATCH | `/api/settings` | `currency`, `weekStartsOn` |
+| GET / PUT / DELETE | `/api/employers/:id/calendar` | the employer's calendar link; see [Calendar sync](#calendar-sync) |
+| POST | `/api/employers/:id/sync` | start a sync now; `202` at once, the result shows in the calendar status |
+| GET / PATCH | `/api/settings` | `currency`, `weekStartsOn`, `timeZone` (IANA name; default `Australia/Sydney`) |
+
+Employers also take `breakRule` and `breakMinutes` (see below). `sync` follows the calendar link: it is `calendar` exactly while a link exists, and `PATCH` can't change that (`400 no_calendar`, `409 calendar_linked`).
 
 Errors: `400 { error: "invalid_body", issues }` (Zod issues with field paths), `404 { error: "not_found" }`.
 
@@ -23,6 +27,40 @@ Errors: `400 { error: "invalid_body", issues }` (Zod issues with field paths), `
 | Key | Value |
 |---|---|
 | `settings` | one settings object |
-| `bill:<id>` · `employer:<id>` · `shift:<id>` · `income:<id>` | one record each; ids are ULIDs, so listing is oldest-first |
+| `bill:<id>` · `employer:<id>` · `shift:<id>` · `income:<id>` | one record each; ids are ULIDs, so listing is oldest-first. Calendar shifts use a stable `cal-…` id instead |
+| `calsrc:<employerId>` | the employer's calendar link (a secret) and optional title filter |
+| `calstate:<employerId>` | how the last syncs went, plus fingerprints used to skip unchanged work |
 
 Listing does `kv.list({ prefix })`, then bulk `kv.get` in groups of 100 keys.
+
+## Calendar sync
+
+An employer can take its shifts from an iCalendar feed (any public `https://` or `webcal://` link, such as an Apple, Google or Outlook roster). Shifts that come from the calendar have `source: "calendar"`; the calendar is their only source of truth.
+
+| Call | Behaviour |
+|---|---|
+| `PUT /api/employers/:id/calendar` `{ url, match? }` | links the calendar and starts a first sync in the background (`202`). `match` keeps only events whose title contains it. `400 invalid_url` for anything but a public https link |
+| `GET /api/employers/:id/calendar` | `{ calendar: { linked, url, syncing, lastSuccessAt, lastError, zone, result } }`. `url` is masked; the real link is never returned |
+| `DELETE /api/employers/:id/calendar?shifts=keep\|delete` | unlinks. `keep` turns the calendar shifts into manual ones; `delete` removes them. The choice is required (`400`), and a running sync blocks it (`409 sync_running`) |
+| `POST /api/employers/:id/sync` | `202`; `409 no_calendar` if there is no link |
+
+Calendar shifts can't be edited or deleted one by one: `PATCH` and `DELETE` on them return `403 { error: "calendar_managed" }`. Manual shifts are never touched by a sync, even on the same day. A linked employer can't be deleted (`409 calendar_linked`); unlink it first.
+
+**What a sync does.** It reads events from 14 days back to 90 days ahead, turns each into a shift (paid hours = length minus the unpaid break below), and creates, updates or deletes only that employer's calendar shifts inside that window. Older shifts are never touched. If the calendar can't be read, or comes back empty while shifts exist, nothing is deleted and `lastError` says why (`timeout`, `network`, `http_<status>`, `not_a_calendar`, `too_large`, `empty_calendar`). Repeating events (`RRULE`) are not expanded; they are counted in `result.recurring`.
+
+**When.** A Cron Trigger runs every 15 minutes and syncs up to 3 linked employers that are due (last success over 45 minutes ago, last attempt over 10 minutes ago), longest-waiting first.
+
+**Time zone.** Dates and times use the zone the calendar names (`X-WR-TIMEZONE`), else the zone most of its events use, else `settings.timeZone`. The one used is reported in `zone`.
+
+**Unpaid breaks.** An employer's `breakRule` decides how much of an event is unpaid; `breakMinutes` (30, 45 or 60) is the length of one break. Default `none`.
+
+| `breakRule` | Takes one break | Takes a second |
+|---|---|---|
+| `none` | never | never |
+| `over5` | event longer than 5 h | |
+| `over5_twice10` | longer than 5 h | 10 h or more |
+| `atLeast5` | 5 h or more | |
+| `over6` | longer than 6 h | |
+| `over4_5` | longer than 4.5 h | |
+
+Those come from the break clauses of the Fair Work modern awards as at 1 July 2026 (retail: `over5_twice10`; hospitality: `over6`; fast food and restaurants: `atLeast5`; cleaning: `over4_5`; clerks, pharmacy, aged care, children's services, security, storage, health professionals and building: `over5`). Shiftworkers' breaks are often paid, and an enterprise agreement can differ: check your own contract.

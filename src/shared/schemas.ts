@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BREAK_RULES } from "./breaks";
 import { isValidIsoDate } from "./dates";
+import { isValidZone } from "./timezone";
 import { CYCLES } from "./schedule";
 
 const isoDate = z.string().refine(isValidIsoDate, "Expected a valid date as YYYY-MM-DD");
@@ -106,6 +107,8 @@ export const SettingsSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: z.union([z.literal(0), z.literal(1)]),
+  /** IANA zone used for "today" in calendar sync, and for calendars that don't name a zone of their own. */
+  timeZone: z.string().refine(isValidZone, "Expected an IANA time zone such as Australia/Sydney"),
 });
 export const SettingsPatchSchema = SettingsSchema.partial();
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -113,4 +116,64 @@ export type Settings = z.infer<typeof SettingsSchema>;
 export const DEFAULT_SETTINGS: Settings = {
   currency: "AUD",
   weekStartsOn: 1,
+  timeZone: "Australia/Sydney",
 };
+
+// ---- Calendar sync ---------------------------------------------------------
+
+export const CalendarLinkInputSchema = z.object({
+  url: z.string().trim().min(1).max(2000),
+  /** Only events whose title contains this text become shifts. */
+  match: z.string().trim().max(100).optional(),
+});
+export type CalendarLinkInput = z.infer<typeof CalendarLinkInputSchema>;
+
+/** What is stored under `calsrc:<employerId>`. The url is a secret and never leaves the Worker unmasked. */
+export const CalendarSourceSchema = z.object({
+  url: z.string(),
+  match: z.string().optional(),
+});
+export type CalendarSource = z.infer<typeof CalendarSourceSchema>;
+
+/** What is stored under `calstate:<employerId>`: how the last syncs went, plus what is needed to skip needless work. */
+export const CalendarStateSchema = z.object({
+  /** Set while a sync runs, so a second trigger doesn't start another one. */
+  startedAt: z.iso.datetime().optional(),
+  lastAttemptAt: z.iso.datetime().optional(),
+  lastSuccessAt: z.iso.datetime().optional(),
+  /** A short code such as "timeout", "http_404" or "empty_calendar"; cleared by the next success. */
+  lastError: z.string().optional(),
+  etag: z.string().optional(),
+  lastModified: z.string().optional(),
+  /** Fingerprints of the settings and the feed the last full sync used. */
+  configSig: z.string().optional(),
+  bodySig: z.string().optional(),
+  zone: z.object({ name: z.string(), source: z.enum(["calendar", "events", "fallback"]) }).optional(),
+  result: z
+    .object({
+      created: z.number(),
+      updated: z.number(),
+      deleted: z.number(),
+      unchanged: z.number(),
+      /** Events that were not shifts: all-day, cancelled, filtered out or unreadable. */
+      skipped: z.number(),
+      /** Repeating events, which are not expanded. */
+      recurring: z.number(),
+    })
+    .optional(),
+});
+export type CalendarState = z.infer<typeof CalendarStateSchema>;
+
+/** What the API tells the page about an employer's calendar link. */
+export interface CalendarStatus {
+  linked: boolean;
+  /** Masked; the real link is never returned. */
+  url?: string;
+  match?: string;
+  syncing: boolean;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  lastError?: string;
+  zone?: CalendarState["zone"];
+  result?: CalendarState["result"];
+}
