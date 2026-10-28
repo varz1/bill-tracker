@@ -11,8 +11,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  // "true" makes this a public demo: the API stays open, but calendar links are capped and expire after a day
-  // (src/worker/lib/calendarSync.ts). Set it to "false" for a real deployment, together with DEMO_MODE in src/web/config.ts.
+  // The one switch between a public demo and your own deployment. "true": the page shows a demo note, Settings are
+  // locked, calendar links are capped and expire after a day. "false": none of that. The page reads it from
+  // GET /api/config, and the rules live in src/worker/lib/demo.ts.
   "vars": { "DEMO": "true" },
   // Calendar sync: every 15 minutes the Worker syncs the calendars that are due (src/worker/lib/calendarSync.ts).
   "triggers": { "crons": ["*/15 * * * *"] },

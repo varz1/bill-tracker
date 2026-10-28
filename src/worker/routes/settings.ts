@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { DEFAULT_SETTINGS, SettingsPatchSchema, SettingsSchema, type Settings } from "../../shared/schemas";
 import { readBody } from "../lib/crud";
+import { policyOf } from "../lib/demo";
 
 const KEY = "settings";
 
@@ -15,6 +16,7 @@ export const settings = new Hono<{ Bindings: Env }>();
 settings.get("/", async (c) => c.json({ settings: await loadSettings(c.env.BILL_DATA) }));
 
 settings.patch("/", async (c) => {
+  if (policyOf(c.env).settingsLocked) return c.json({ error: "settings_locked" }, 403);
   const body = await readBody(c, SettingsPatchSchema);
   if (body instanceof Response) return body;
   const next = { ...(await loadSettings(c.env.BILL_DATA)), ...body };

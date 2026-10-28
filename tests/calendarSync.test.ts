@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Employer, Shift } from "../src/shared/schemas";
 import { EmployerSchema, ShiftSchema } from "../src/shared/schemas";
+import { policyOf } from "../src/worker/lib/demo";
 import { createStore } from "../src/worker/lib/store";
 import {
   isDue,
-  limitsOf,
   loadSource,
   loadState,
   MAX_PER_RUN,
@@ -442,9 +442,9 @@ describe("a public demo", () => {
   const demo = () => ({ ...asEnv(kv), DEMO: "true" }) as unknown as Env;
 
   it("is bounded only when asked to be", () => {
-    expect(limitsOf(demo())).toEqual({ maxLinked: 3, linkTtlMs: 86_400_000 });
-    expect(limitsOf(env).linkTtlMs).toBeNull();
-    expect(limitsOf({ ...asEnv(kv), DEMO: "false" } as unknown as Env).linkTtlMs).toBeNull();
+    expect(policyOf(demo())).toMatchObject({ maxLinkedCalendars: 3, calendarTtlMs: 86_400_000, settingsLocked: true });
+    expect(policyOf(env).calendarTtlMs).toBeNull();
+    expect(policyOf({ ...asEnv(kv), DEMO: "false" } as unknown as Env).calendarTtlMs).toBeNull();
   });
 
   it("removes a calendar and its shifts after a day, and leaves the employer and manual shifts", async () => {

@@ -4,7 +4,8 @@ import { DEFAULT_BREAK_MINUTES, type BreakRule } from "../../shared/breaks";
 import { normalizeCalendarUrl } from "../../shared/calendarUrl";
 import { CONTRACT_LABELS, EMPLOYER_COLORS, nextEmployerColor, SYNC_LABELS, sameName } from "../../shared/employers";
 import { CONTRACTS, type CalendarLinkInput, type Employer, type EmployerInput } from "../../shared/schemas";
-import { DEMO_MODE } from "../config";
+import { useConfig } from "../lib/config";
+import { durationText } from "../lib/labels";
 import { ApiError } from "../lib/api";
 import { BreakRuleField } from "./BreakRuleField";
 import { hintClass, inputClass, labelClass, submitClass } from "./fields";
@@ -31,6 +32,7 @@ export function saveErrorText(err: unknown): string {
 
 export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
   const linked = employer?.sync === "calendar";
+  const { demo, calendarTtlMs } = useConfig();
   const [name, setName] = useState(employer?.name ?? "");
   const [contract, setContract] = useState<Employer["contract"]>(employer?.contract ?? "full-time");
   const [color, setColor] = useState(employer?.color ?? nextEmployerColor(all.map((o) => o.color)));
@@ -131,10 +133,10 @@ export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
 
       {useCalendar && (
         <>
-          {DEMO_MODE && (
+          {demo && (
             <p role="note" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-800">
-              This is a public demo: everyone sees the same data. Use a test calendar, not your real roster. A calendar linked
-              here, and the shifts it brings in, is removed after a day.
+              This is a public demo: everyone sees the same data. Use a test calendar, not your real roster.
+              {calendarTtlMs !== null && ` A calendar linked here, and the shifts it brings in, is removed after ${durationText(calendarTtlMs)}.`}
             </p>
           )}
           <label className="block">

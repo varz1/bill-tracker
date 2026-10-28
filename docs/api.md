@@ -6,6 +6,7 @@ Schemas live in [`src/shared/schemas.ts`](../src/shared/schemas.ts) and are shar
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/health` | `{ ok: true }` |
+| GET | `/api/config` | `{ config: { demo, settingsLocked, calendarTtlMs } }`, how this deployment is set up (the `DEMO` variable) |
 | GET / POST | `/api/bills` | list → `{ items }`; create → `201 { item }` |
 | GET / PATCH / DELETE | `/api/bills/:id` | PATCH takes any subset of the create fields |
 | GET / POST | `/api/employers` | name (unique, ignoring case), contract, sync, colour (optional on create: a free palette colour is picked) |
@@ -44,13 +45,13 @@ An employer can take its shifts from an iCalendar feed (any public `https://` or
 | `DELETE /api/employers/:id/calendar?shifts=keep\|delete` | unlinks. `keep` turns the calendar shifts into manual ones; `delete` removes them. The choice is required (`400`), and a running sync blocks it (`409 sync_running`) |
 | `POST /api/employers/:id/sync` | `202`; `409 no_calendar` if there is no link; `429 too_soon` within 30 seconds of the last sync |
 
-Calendar shifts can't be edited or deleted one by one: `PATCH` and `DELETE` on them return `403 { error: "calendar_managed" }`. Manual shifts are never touched by a sync, even on the same day. A linked employer can't be deleted (`409 calendar_linked`); unlink it first.
+Calendar shifts can't be edited or deleted one by one: `PATCH` and `DELETE` on them return `403 { error: "calendar_managed" }`. Manual shifts are never touched by a sync, even on the same day. `DELETE /api/employers/:id` is refused while the employer is linked (`409 calendar_linked`) or has shifts or payslips (`409 employer_in_use`). `DELETE /api/employers/:id?cascade=all` deletes the employer together with its calendar link, calendar shifts, own shifts and payslips (`409 sync_running` while a sync is running, and then nothing is changed).
 
 **What a sync does.** It reads events from 14 days back to 90 days ahead, turns each into a shift (paid hours = length minus the unpaid break below), and creates, updates or deletes only that employer's calendar shifts inside that window. Older shifts are never touched, and a shift that has already happened is never deleted (it can still be corrected) even if the calendar stops listing it. If the calendar can't be read, or comes back empty while shifts exist, nothing is deleted and `lastError` says why (`timeout`, `network`, `http_<status>`, `not_a_calendar`, `too_large`, `bad_redirect`, `too_many_redirects`, `empty_calendar`, `interrupted`). `interrupted` means a run was stopped before it finished. Repeating events (`RRULE`) are not expanded; they are counted in `result.recurring`.
 
 Redirects are followed by hand, at most 3, and each one has to be a public https link again. A calendar shift's id is `cal-<employer>-<event>`, so one employer's can be listed on their own. Unlinking with `keep` leaves those ids on the kept shifts; if the calendar is linked again, a kept shift is left as it is and not overwritten.
 
-**Public demo.** With `DEMO` set to `"true"` (see `wrangler.jsonc`) the API stays open but a calendar can't cost much: at most 3 employers can be linked at once (20 otherwise), and a link is removed after a day together with the shifts it brought in. Shifts the visitor entered, and the employer, stay. Anyone can read the data of a public demo, so the form tells visitors to use a test calendar.
+**Public demo.** With `DEMO` set to `"true"` (see `wrangler.jsonc`) the API stays open but a calendar can't cost much: at most 3 employers can be linked at once (20 otherwise), and a link is removed after a day together with the shifts it brought in. `PATCH /api/settings` returns `403 settings_locked`. `GET /api/config` returns `{ config: { demo, settingsLocked, calendarTtlMs } }`, which is what the page reads. Shifts the visitor entered, and the employer, stay. Anyone can read the data of a public demo, so the form tells visitors to use a test calendar.
 
 **When.** A Cron Trigger runs every 15 minutes and syncs up to 3 linked employers that are due (last success over 45 minutes ago, last attempt over 10 minutes ago), longest-waiting first.
 

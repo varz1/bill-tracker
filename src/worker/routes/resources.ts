@@ -15,6 +15,7 @@ import {
 } from "../../shared/schemas";
 import { loadSource } from "../lib/calendarSync";
 import { crudRoutes } from "../lib/crud";
+import { deleteEmployerData } from "../lib/employerData";
 import { createStore } from "../lib/store";
 
 export const bills = crudRoutes({
@@ -48,6 +49,10 @@ export const employers = crudRoutes({
     return null;
   },
   beforeDelete: async (c, id) => {
+    // ?cascade=all deletes the employer together with its calendar link, shifts and payslips.
+    if (c.req.query("cascade") === "all") {
+      return (await deleteEmployerData(c.env, id)) ? null : c.json({ error: "sync_running" }, 409);
+    }
     if (await loadSource(c.env.BILL_DATA, id)) return c.json({ error: "calendar_linked" }, 409);
     const [shiftList, slipList] = await Promise.all([
       createStore(c.env.BILL_DATA, "shift", ShiftSchema).list(),

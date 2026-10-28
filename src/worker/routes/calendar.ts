@@ -3,7 +3,6 @@ import { normalizeCalendarUrl } from "../../shared/calendarUrl";
 import { CalendarLinkInputSchema, EmployerSchema } from "../../shared/schemas";
 import {
   calendarStatus,
-  limitsOf,
   loadState,
   saveSource,
   saveState,
@@ -12,6 +11,7 @@ import {
   unlinkCalendar,
 } from "../lib/calendarSync";
 import { readBody } from "../lib/crud";
+import { policyOf } from "../lib/demo";
 import { createStore } from "../lib/store";
 
 // Linking an employer to a calendar feed. Mounted next to the employer routes at /api/employers.
@@ -46,7 +46,7 @@ calendar.put("/:id/calendar", async (c) => {
   const now = new Date();
 
   // The API is open on a public demo, so what a link can cost is capped: how many at once, and how often.
-  const { maxLinked } = limitsOf(c.env);
+  const maxLinked = policyOf(c.env).maxLinkedCalendars;
   const linkedElsewhere = (await employerStore(c).list()).filter((e) => e.sync === "calendar" && e.id !== employer.id);
   if (employer.sync !== "calendar" && linkedElsewhere.length >= maxLinked) {
     return c.json({ error: "too_many_calendars", limit: maxLinked }, 409);

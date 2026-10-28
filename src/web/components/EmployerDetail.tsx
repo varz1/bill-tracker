@@ -30,6 +30,8 @@ interface Props {
 
 type Editing = { kind: "employer" } | { kind: "payslip"; record?: Income } | { kind: "shift"; record?: Shift } | null;
 
+const countText = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
 const byNewest = <T,>(date: (r: T) => string) => (a: T, b: T) => (date(a) < date(b) ? 1 : date(a) > date(b) ? -1 : 0);
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -137,30 +139,29 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
 
       <div className="mt-6 text-center">
         {confirmingDelete ? (
-          <span className="text-xs">
+          <div className="text-xs">
+            <p className="mb-2 text-ink/60">
+              Delete {employer.name}
+              {inUse || linked ? ` and its ${countText(mySlips.length, "payslip")} and ${countText(myShifts.length, "shift")}` : ""}
+              {linked ? ", and stop syncing its calendar" : ""}? This can't be undone.
+            </p>
             <button
               onClick={async () => {
-                await employers.remove(employer.id);
+                await employers.remove(employer.id, { withData: true });
+                await Promise.all([shifts.reload(), payslips.reload()]);
                 onBack();
               }}
               className="rounded-md px-2 py-1.5 font-medium text-red-600 hover:bg-red-50"
             >
-              Delete {employer.name}
+              {inUse || linked ? "Delete everything" : `Delete ${employer.name}`}
             </button>
             <button onClick={() => setConfirmingDelete(false)} className="rounded-md px-2 py-1.5 text-ink/50 hover:bg-ink/5">
               Cancel
             </button>
-          </span>
-        ) : linked ? (
-          <p className="text-xs text-ink/35">To delete {employer.name}, unlink its calendar first.</p>
-        ) : inUse ? (
-          <p className="text-xs text-ink/35">
-            {employer.name} has {mySlips.length} {mySlips.length === 1 ? "payslip" : "payslips"} and {myShifts.length}{" "}
-            {myShifts.length === 1 ? "shift" : "shifts"}. To delete it, remove those first.
-          </p>
+          </div>
         ) : (
           <button onClick={() => setConfirmingDelete(true)} className="rounded-md px-2 py-1.5 text-xs text-red-500 hover:bg-red-50">
-            Delete employer
+            {inUse || linked ? "Delete employer and all its data" : "Delete employer"}
           </button>
         )}
       </div>

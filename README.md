@@ -27,7 +27,8 @@ Track recurring bills, shifts and income in one place. Single currency, single u
 
 **General**
 - One currency, chosen in Settings. Amounts are stored as whole cents and never converted.
-- Demo mode shows a "made-up data" note and locks Settings. Calendar sync stays open to visitors, but only a few calendars can be linked at a time and each is removed after a day (set `DEMO` in `wrangler.jsonc`).
+- Demo mode (the `DEMO` variable in `wrangler.jsonc`) shows a "made-up data" note and locks Settings. Calendar sync stays open to visitors, but only a few calendars can be linked at a time and each is removed after a day.
+- An employer can be deleted together with its shifts, payslips and calendar link, after a confirmation that says how many.
 
 ## Stack
 
@@ -55,7 +56,7 @@ npm run deploy     # vite build && wrangler deploy
 ```
 
 Or connect the repo in Cloudflare (Workers Builds); settings are in [docs/deploy.md](docs/deploy.md).
-Turn off demo mode for a real deployment in [`src/web/config.ts`](src/web/config.ts).
+For a real deployment set `"DEMO": "false"` in [`wrangler.jsonc`](wrangler.jsonc); that is the only switch (see [docs/deploy.md](docs/deploy.md)).
 
 ## Docs
 

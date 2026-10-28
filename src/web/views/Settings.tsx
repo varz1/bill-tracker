@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { SettingsPatchSchema, type Settings as SettingsValue } from "../../shared/schemas";
 import { isValidZone } from "../../shared/timezone";
 import { inputClass, labelClass } from "../components/fields";
-import { DEMO_MODE } from "../config";
+import { useConfig } from "../lib/config";
 import { useSettings } from "../lib/settings";
 
 const CURRENCIES = Intl.supportedValuesOf("currency");
@@ -10,6 +10,7 @@ const TIME_ZONES = Intl.supportedValuesOf("timeZone");
 
 export default function Settings() {
   const { settings, update } = useSettings();
+  const { settingsLocked } = useConfig();
   const [draft, setDraft] = useState<SettingsValue>(settings);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export default function Settings() {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (DEMO_MODE) return;
+    if (settingsLocked) return;
     const currency = draft.currency.trim().toUpperCase();
     if (!CURRENCIES.includes(currency)) return setError("Choose a valid currency code, e.g. AUD.");
     const timeZone = draft.timeZone.trim();
@@ -41,8 +42,8 @@ export default function Settings() {
 
   return (
     <form onSubmit={save} className="space-y-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm">
-      {DEMO_MODE && <p className="text-xs text-ink/50">Settings are locked in this demo.</p>}
-      <fieldset disabled={DEMO_MODE} className="space-y-4">
+      {settingsLocked && <p className="text-xs text-ink/50">Settings are locked on this deployment.</p>}
+      <fieldset disabled={settingsLocked} className="space-y-4">
         <label className="block">
           <span className={labelClass}>Currency</span>
           <input

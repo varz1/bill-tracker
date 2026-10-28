@@ -54,3 +54,10 @@ export function timeUntil(iso: string, now: number = Date.now()): string {
   if (minutes < 60) return `in ${minutes} min`;
   return `in ${Math.round(minutes / 60)} h`;
 }
+
+/** A length of time in words: "1 day", "36 hours". */
+export function durationText(ms: number): string {
+  const hours = Math.max(1, Math.round(ms / 3_600_000));
+  if (hours % 24 === 0) return `${hours / 24} ${hours === 24 ? "day" : "days"}`;
+  return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+}

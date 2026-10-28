@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { syncDue } from "./lib/calendarSync";
 import { calendar } from "./routes/calendar";
+import { config } from "./routes/config";
 import { bills, employers, income, shifts } from "./routes/resources";
 import { settings } from "./routes/settings";
 
 export const app = new Hono<{ Bindings: Env }>();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+app.route("/api/config", config);
 app.route("/api/bills", bills);
 app.route("/api/employers", employers);
 app.route("/api/employers", calendar);

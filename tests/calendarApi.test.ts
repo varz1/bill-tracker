@@ -364,3 +364,67 @@ describe("limits on how a calendar can be used", () => {
     expect((await json(await call(`/api/employers/${employer.id}`))).item.sync).toBe("manual");
   });
 });
+
+describe("deleting an employer with all its data", () => {
+  const slip = (employerId: string) => ({ employerId, payDate: "2026-10-30", periodStart: "2026-10-12", periodEnd: "2026-10-25", gross: 800, tax: 100, net: 700, super: 90 });
+
+  async function withData() {
+    const employer = await linkedEmployer();
+    await call("/api/shifts", { method: "POST", body: { employerId: employer.id, date: "2026-11-05", hours: 2 } });
+    expect((await call("/api/income", { method: "POST", body: slip(employer.id) })).status).toBe(201);
+    return employer;
+  }
+
+  it("removes the employer, its link, calendar and own shifts and its payslips, and nobody else's", async () => {
+    const employer = await withData();
+    const other = await newEmployer({ name: "Other Co" });
+    await call("/api/shifts", { method: "POST", body: { employerId: other.id, date: "2026-11-05", hours: 5 } });
+    await call("/api/income", { method: "POST", body: slip(other.id) });
+
+    expect((await call(`/api/employers/${employer.id}?cascade=all`, { method: "DELETE" })).status).toBe(204);
+
+    expect((await call(`/api/employers/${employer.id}`)).status).toBe(404);
+    expect(await shiftsOf(employer.id)).toHaveLength(0);
+    expect(((await json(await call("/api/income"))).items as Json[]).filter((p) => p.employerId === employer.id)).toHaveLength(0);
+    expect(await kv.get(`calsrc:${employer.id}`)).toBeNull();
+    expect(await kv.get(`calstate:${employer.id}`)).toBeNull();
+    expect(await shiftsOf(other.id)).toHaveLength(1);
+    expect(((await json(await call("/api/income"))).items as Json[]).filter((p) => p.employerId === other.id)).toHaveLength(1);
+  });
+
+  it("still refuses a plain delete while the employer has data", async () => {
+    const employer = await withData();
+    expect((await call(`/api/employers/${employer.id}`, { method: "DELETE" })).status).toBe(409);
+    expect(await shiftsOf(employer.id)).toHaveLength(3);
+  });
+
+  it("changes nothing while a sync is running", async () => {
+    const employer = await withData();
+    await saveState(asEnv(kv).BILL_DATA, employer.id, { startedAt: new Date().toISOString() });
+    const res = await call(`/api/employers/${employer.id}?cascade=all`, { method: "DELETE" });
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe("sync_running");
+    expect(await shiftsOf(employer.id)).toHaveLength(3);
+    expect((await call(`/api/employers/${employer.id}`)).status).toBe(200);
+  });
+});
+
+describe("what the DEMO variable controls", () => {
+  it("is reported to the page", async () => {
+    demo = true;
+    expect((await json(await call("/api/config"))).config).toEqual({ demo: true, settingsLocked: true, calendarTtlMs: 86_400_000 });
+    demo = false;
+    expect((await json(await call("/api/config"))).config).toEqual({ demo: false, settingsLocked: false, calendarTtlMs: null });
+  });
+
+  it("locks the settings on a demo only", async () => {
+    demo = true;
+    const locked = await call("/api/settings", { method: "PATCH", body: { currency: "USD" } });
+    expect(locked.status).toBe(403);
+    expect((await json(await call("/api/settings"))).settings.currency).not.toBe("USD");
+
+    demo = false;
+    expect((await call("/api/settings", { method: "PATCH", body: { currency: "USD" } })).status).toBe(200);
+  });
+});
+

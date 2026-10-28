@@ -12,7 +12,7 @@ export interface Records<T, I> {
   /** Loads the list again, for changes made outside this hook (a calendar sync, linking a calendar). */
   reload(): Promise<void>;
   update(id: string, patch: Partial<I>): Promise<void>;
-  remove(id: string): Promise<void>;
+  remove(id: string, options?: { withData?: boolean }): Promise<void>;
 }
 
 /**
@@ -85,10 +85,10 @@ export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>
   );
 
   const remove = useCallback(
-    (id: string) =>
+    (id: string, options?: { withData?: boolean }) =>
       optimistic(
         (list) => list.filter((r) => r.id !== id),
-        () => resource.remove(id),
+        () => resource.remove(id, options),
       ),
     [optimistic, resource],
   );

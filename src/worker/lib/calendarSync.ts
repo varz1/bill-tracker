@@ -14,6 +14,7 @@ import {
 } from "../../shared/schemas";
 import { calendarShiftPrefix, planSync } from "../../shared/syncPlan";
 import { loadSettings } from "../routes/settings";
+import { policyOf } from "./demo";
 import { fingerprint } from "./hash";
 import { createStore } from "./store";
 
@@ -38,16 +39,6 @@ export const MAX_PER_RUN = 3;
 /** Nobody can start a sync, or change a link, on an employer more often than this. */
 export const MIN_GAP_MS = 30_000;
 
-/**
- * A public demo has an open API, so calendar links are bounded instead of locked: only a few at a time, and
- * each (with the shifts it brought in) is removed after a day. Switched on by the DEMO variable.
- */
-export const isDemo = (env: Env) => String(env.DEMO) === "true";
-
-export function limitsOf(env: Env): { maxLinked: number; linkTtlMs: number | null } {
-  return isDemo(env) ? { maxLinked: 3, linkTtlMs: 24 * 3_600_000 } : { maxLinked: 20, linkTtlMs: null };
-}
-
 const sourceKey = (employerId: string) => `calsrc:${employerId}`;
 const stateKey = (employerId: string) => `calstate:${employerId}`;
 
@@ -71,7 +62,7 @@ export async function removeLink(kv: KVNamespace, employerId: string): Promise<v
   await Promise.all([kv.delete(sourceKey(employerId)), kv.delete(stateKey(employerId))]);
 }
 
-const isRunning = (state: CalendarState, now: Date) =>
+export const isRunning = (state: CalendarState, now: Date) =>
   state.startedAt !== undefined && now.getTime() - Date.parse(state.startedAt) < LEASE_MS;
 
 /** True when a sync was started on this employer less than MIN_GAP_MS ago. */
@@ -79,7 +70,7 @@ export const startedTooRecently = (state: CalendarState, now: Date) =>
   state.lastAttemptAt !== undefined && now.getTime() - Date.parse(state.lastAttemptAt) < MIN_GAP_MS;
 
 const expiryOf = (env: Env, source: CalendarSource): number | null => {
-  const ttl = limitsOf(env).linkTtlMs;
+  const ttl = policyOf(env).calendarTtlMs;
   if (ttl === null) return null;
   return source.linkedAt ? Date.parse(source.linkedAt) + ttl : 0;
 };
@@ -187,7 +178,7 @@ async function fetchFeed(url: string, headers: Record<string, string>): Promise<
   return { error: "too_many_redirects" };
 }
 
-async function inChunks<T>(items: T[], run: (item: T) => Promise<unknown>) {
+export async function inChunks<T>(items: T[], run: (item: T) => Promise<unknown>) {
   for (let i = 0; i < items.length; i += WRITE_CHUNK) await Promise.all(items.slice(i, i + WRITE_CHUNK).map(run));
 }
 
@@ -336,7 +327,7 @@ export function isDue(state: CalendarState, now: Date): boolean {
 /** On a public demo: unlinks (and deletes the shifts of) every calendar whose day is up. Returns their ids. */
 async function expireLinks(env: Env, employerIds: string[], now: Date): Promise<Set<string>> {
   const expired = new Set<string>();
-  if (limitsOf(env).linkTtlMs === null) return expired;
+  if (policyOf(env).calendarTtlMs === null) return expired;
   for (const id of employerIds) {
     const source = await loadSource(env.BILL_DATA, id);
     const expiry = source ? expiryOf(env, source) : null;

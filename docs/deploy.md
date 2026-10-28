@@ -32,7 +32,18 @@ Cloudflare dashboard → Workers & Pages → Create → Import a repository.
 
 Free-plan limits that matter: 10 ms of CPU per run, 50 outbound `fetch` calls and 1,000 KV calls per run, 1,000 KV writes a day. A sync only writes shifts that changed, and a cron run syncs at most 3 employers.
 
-A real deployment (not a public demo) should set `"DEMO": "false"` in `wrangler.jsonc` and `DEMO_MODE = false` in `src/web/config.ts`. The first makes the Worker keep calendars until they are unlinked and raises the limit on linked calendars; the second removes the demo banner and unlocks Settings. A public demo leaves the API open on purpose, so `DEMO: "true"` keeps its calendar use bounded: 3 linked calendars at a time, each removed after a day with its shifts, no more than one sync of an employer every 30 seconds.
+## Public demo or your own deployment
+
+One variable decides it: `DEMO` in `wrangler.jsonc`. The page asks the Worker (`GET /api/config`), so there is nothing to change in the frontend.
+
+| | `"DEMO": "true"` (public demo) | `"DEMO": "false"` (your own) |
+|---|---|---|
+| Banner and the "use a test calendar" note | shown | hidden |
+| Settings | locked, in the page and in the API (`403 settings_locked`) | editable |
+| Linked calendars at once | 3 | 20 |
+| A linked calendar and its shifts | removed after a day | kept until unlinked |
+
+A public demo leaves the rest of the API open on purpose. Anything new that only makes sense on a demo has to read `policyOf(env)` in `src/worker/lib/demo.ts`, never a constant of its own. Syncing an employer or changing its link is limited to once every 30 seconds either way.
 
 To try the schedule locally: `npx wrangler dev --test-scheduled`, then open `/cdn-cgi/handler/scheduled`.
 

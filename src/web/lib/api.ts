@@ -12,6 +12,13 @@ import type {
   ShiftInput,
 } from "../../shared/schemas";
 
+/** How this deployment is set up; the Worker's DEMO variable decides it. */
+export interface AppConfig {
+  demo: boolean;
+  settingsLocked: boolean;
+  calendarTtlMs: number | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -38,7 +45,8 @@ export interface Resource<T, I> {
   list(): Promise<T[]>;
   create(input: I): Promise<T>;
   update(id: string, patch: Partial<I>): Promise<T>;
-  remove(id: string): Promise<void>;
+  /** `withData` also deletes everything that belongs to the record (an employer's shifts and payslips). */
+  remove(id: string, options?: { withData?: boolean }): Promise<void>;
 }
 
 function resource<T, I>(base: string): Resource<T, I> {
@@ -47,11 +55,15 @@ function resource<T, I>(base: string): Resource<T, I> {
     create: async (input: I) => (await request<{ item: T }>(base, { method: "POST", body: input })).item,
     update: async (id: string, patch: Partial<I>) =>
       (await request<{ item: T }>(`${base}/${id}`, { method: "PATCH", body: patch })).item,
-    remove: (id: string) => request<void>(`${base}/${id}`, { method: "DELETE" }),
+    remove: (id: string, options?: { withData?: boolean }) =>
+      request<void>(`${base}/${id}${options?.withData ? "?cascade=all" : ""}`, { method: "DELETE" }),
   };
 }
 
 export const api = {
+  config: {
+    get: async () => (await request<{ config: AppConfig }>("/api/config")).config,
+  },
   bills: resource<Bill, BillInput>("/api/bills"),
   employers: resource<Employer, EmployerInput>("/api/employers"),
   shifts: resource<Shift, ShiftInput>("/api/shifts"),

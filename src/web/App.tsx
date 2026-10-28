@@ -1,6 +1,6 @@
 import { Wallet } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
-import { DEMO_MODE } from "./config";
+import { useConfig } from "./lib/config";
 import { SettingsProvider } from "./lib/settings";
 import Bills from "./views/Bills";
 import Settings from "./views/Settings";
@@ -32,6 +32,7 @@ function routeFromHash(): Route {
 export default function App() {
   const [route, setRoute] = useState<Route>(routeFromHash);
   const { tab } = route;
+  const { demo } = useConfig();
 
   // Back and forward buttons move between the overview and an employer page.
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-paper font-sans text-ink">
-      {DEMO_MODE && (
+      {demo && (
         <p className="bg-ink px-4 py-1.5 text-center text-xs text-paper/80">Demo app. All data shown here is made up.</p>
       )}
       <div className="mx-auto max-w-md px-4 py-6">
