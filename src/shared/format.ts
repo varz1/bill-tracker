@@ -46,6 +46,11 @@ export function formatHours(hours: number): string {
   return `${Math.round(hours * 10) / 10}h`;
 }
 
+/** One shift's hours to the quarter hour: 6.25 -> "6.25h". Totals and averages use formatHours. */
+export function formatShiftHours(hours: number): string {
+  return `${Math.round(hours * 100) / 100}h`;
+}
+
 /** Minor units to the plain decimal string used in form inputs: 42400 -> "424", 42450 -> "424.5". */
 export function amountToInput(minor: number): string {
   return String(minor / 100);

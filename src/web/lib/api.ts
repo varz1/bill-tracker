@@ -1,4 +1,16 @@
-import type { Bill, BillInput, Employer, EmployerInput, Income, IncomeInput, Settings, Shift, ShiftInput } from "../../shared/schemas";
+import type {
+  Bill,
+  BillInput,
+  CalendarLinkInput,
+  CalendarStatus,
+  Employer,
+  EmployerInput,
+  Income,
+  IncomeInput,
+  Settings,
+  Shift,
+  ShiftInput,
+} from "../../shared/schemas";
 
 export class ApiError extends Error {
   constructor(
@@ -44,6 +56,17 @@ export const api = {
   employers: resource<Employer, EmployerInput>("/api/employers"),
   shifts: resource<Shift, ShiftInput>("/api/shifts"),
   income: resource<Income, IncomeInput>("/api/income"),
+  calendar: {
+    status: async (employerId: string) =>
+      (await request<{ calendar: CalendarStatus }>(`/api/employers/${employerId}/calendar`)).calendar,
+    /** Links the calendar; the first sync then runs in the background. */
+    link: async (employerId: string, input: CalendarLinkInput) =>
+      (await request<{ calendar: CalendarStatus }>(`/api/employers/${employerId}/calendar`, { method: "PUT", body: input })).calendar,
+    unlink: (employerId: string, shifts: "keep" | "delete") =>
+      request<void>(`/api/employers/${employerId}/calendar?shifts=${shifts}`, { method: "DELETE" }),
+    /** Starts a sync in the background; read the result from `status`. */
+    sync: (employerId: string) => request<unknown>(`/api/employers/${employerId}/sync`, { method: "POST" }),
+  },
   settings: {
     get: async () => (await request<{ settings: Settings }>("/api/settings")).settings,
     update: async (patch: Partial<Settings>) =>

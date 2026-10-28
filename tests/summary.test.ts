@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountToInput, createFormatters, formatHours, parseAmount } from "../src/shared/format";
+import { amountToInput, createFormatters, formatHours, formatShiftHours, parseAmount } from "../src/shared/format";
 import type { Bill } from "../src/shared/schemas";
 import { sortViews, timeline, totals, viewBill } from "../src/shared/summary";
 
@@ -131,6 +131,13 @@ describe("amount parsing", () => {
     expect(formatHours(7.6)).toBe("7.6h");
     expect(formatHours(7.64)).toBe("7.6h");
     expect(formatHours(0)).toBe("0h");
+  });
+
+  it("formatShiftHours keeps quarter hours", () => {
+    expect(formatShiftHours(6.25)).toBe("6.25h");
+    expect(formatShiftHours(4.75)).toBe("4.75h");
+    expect(formatShiftHours(8)).toBe("8h");
+    expect(formatShiftHours(7.6)).toBe("7.6h");
   });
 
   it("round-trips through the form input representation", () => {

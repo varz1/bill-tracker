@@ -1,21 +1,34 @@
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { DEFAULT_BREAK_MINUTES, type BreakRule } from "../../shared/breaks";
+import { normalizeCalendarUrl } from "../../shared/calendarUrl";
 import { CONTRACT_LABELS, EMPLOYER_COLORS, nextEmployerColor, SYNC_LABELS, sameName } from "../../shared/employers";
-import { CONTRACTS, type Employer, type EmployerInput } from "../../shared/schemas";
+import { CONTRACTS, type CalendarLinkInput, type Employer, type EmployerInput } from "../../shared/schemas";
+import { DEMO_MODE } from "../config";
 import { ApiError } from "../lib/api";
+import { BreakRuleField } from "./BreakRuleField";
 import { hintClass, inputClass, labelClass, submitClass } from "./fields";
 
 interface Props {
   employer?: Employer;
   /** Existing employers, to catch a duplicate name before it is sent. */
   all: Employer[];
-  onSubmit(input: EmployerInput): Promise<void>;
+  /** The linked calendar, masked, when this employer already has one. */
+  linkedUrl?: string;
+  /** `link` is set when a calendar link was entered; the caller links it once the employer is saved. */
+  onSubmit(input: EmployerInput, link?: CalendarLinkInput): Promise<void>;
 }
 
-export function EmployerForm({ employer, all, onSubmit }: Props) {
+export function EmployerForm({ employer, all, linkedUrl, onSubmit }: Props) {
+  const linked = employer?.sync === "calendar";
   const [name, setName] = useState(employer?.name ?? "");
   const [contract, setContract] = useState<Employer["contract"]>(employer?.contract ?? "full-time");
   const [color, setColor] = useState(employer?.color ?? nextEmployerColor(all.map((o) => o.color)));
+  const [useCalendar, setUseCalendar] = useState(linked);
+  const [url, setUrl] = useState("");
+  const [match, setMatch] = useState("");
+  const [breakRule, setBreakRule] = useState<BreakRule>(employer?.breakRule ?? "none");
+  const [breakMinutes, setBreakMinutes] = useState<number>(employer?.breakMinutes ?? DEFAULT_BREAK_MINUTES);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,13 +39,33 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
     if (all.some((o) => o.id !== employer?.id && sameName(o.name, trimmed))) {
       return setError("You already have an employer with that name.");
     }
+    const pasted = url.trim();
+    if (useCalendar && !linked && !pasted) return setError("Paste your calendar's public link, or choose manual entry.");
+    if (pasted && !normalizeCalendarUrl(pasted)) {
+      return setError("That doesn't look like a public calendar link. It should start with https:// or webcal://.");
+    }
+
+    const input: EmployerInput = {
+      name: trimmed,
+      contract,
+      sync: employer?.sync ?? "manual",
+      color,
+      // Break settings belong to calendar sync; an employer without one keeps whatever it had.
+      ...(useCalendar && { breakRule, breakMinutes: breakMinutes as 30 | 45 | 60 }),
+    };
 
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ name: trimmed, contract, sync: employer?.sync ?? "manual", color });
+      await onSubmit(input, useCalendar && pasted ? { url: pasted, match: match.trim() || undefined } : undefined);
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? "You already have an employer with that name." : "Couldn't save. Please try again.");
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? "You already have an employer with that name."
+          : err instanceof ApiError && err.message === "invalid_url"
+            ? "That link can't be used. It must be a public https:// or webcal:// link."
+            : "Couldn't save. Please try again.",
+      );
       setBusy(false);
     }
   }
@@ -73,19 +106,68 @@ export function EmployerForm({ employer, all, onSubmit }: Props) {
         </select>
         <span className={hintClass}>A label only. It doesn't change any pay figures.</span>
       </label>
+
       <label className="block">
         <span className={labelClass}>Shifts</span>
-        <select value="manual" onChange={() => {}} className={inputClass}>
+        <select
+          value={useCalendar ? "calendar" : "manual"}
+          onChange={(e) => setUseCalendar(e.target.value === "calendar")}
+          disabled={linked}
+          className={inputClass}
+        >
           <option value="manual">{SYNC_LABELS.manual}</option>
-          <option value="calendar" disabled>
-            {SYNC_LABELS.calendar} (coming soon)
+          <option value="calendar" disabled={DEMO_MODE}>
+            {SYNC_LABELS.calendar}
+            {DEMO_MODE ? " (not in the demo)" : ""}
           </option>
         </select>
         <span className={hintClass}>
-          Calendar sync is the recommended way: your roster keeps shifts up to date automatically, with nothing to type. It is
-          coming soon. Until then, enter shifts by hand on this employer's page.
+          {linked
+            ? "To stop syncing, unlink the calendar on this employer's page."
+            : "Calendar sync is the recommended way: your roster keeps shifts up to date automatically, with nothing to type. Shifts it adds can't be edited by hand."}
         </span>
       </label>
+
+      {useCalendar && (
+        <>
+          <label className="block">
+            <span className={labelClass}>{linked ? "Replace calendar link" : "Calendar link"}</span>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              type="url"
+              inputMode="url"
+              placeholder="webcal://… or https://…"
+              autoComplete="off"
+              spellCheck={false}
+              className={inputClass}
+            />
+            <span className={hintClass}>
+              {linked && linkedUrl ? `Linked: ${linkedUrl}. Leave blank to keep it. ` : ""}
+              The public subscription link from your calendar app, which works without signing in. Anyone with the link can read
+              the calendar, so keep it private.
+            </span>
+          </label>
+          {url.trim() && (
+            <label className="block">
+              <span className={labelClass}>Only events containing (optional)</span>
+              <input value={match} onChange={(e) => setMatch(e.target.value)} maxLength={100} className={inputClass} />
+              <span className={hintClass}>
+                Leave blank if every event in this calendar is a shift. Otherwise, only events whose title contains this text count.
+              </span>
+            </label>
+          )}
+          <BreakRuleField
+            rule={breakRule}
+            minutes={breakMinutes}
+            onChange={(next) => {
+              setBreakRule(next.rule);
+              setBreakMinutes(next.minutes);
+            }}
+          />
+        </>
+      )}
+
       {error && (
         <p role="alert" className="text-xs text-red-600">
           {error}

@@ -7,8 +7,10 @@ export interface Records<T, I> {
   records: T[];
   status: LoadStatus;
   saveError: boolean;
-  /** Rejects on failure so the calling form can show the error. */
-  add(input: I): Promise<void>;
+  /** Rejects on failure so the calling form can show the error. Resolves with the saved record. */
+  add(input: I): Promise<T>;
+  /** Loads the list again, for changes made outside this hook (a calendar sync, linking a calendar). */
+  reload(): Promise<void>;
   update(id: string, patch: Partial<I>): Promise<void>;
   remove(id: string): Promise<void>;
 }
@@ -59,9 +61,19 @@ export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>
     async (input: I) => {
       const created = await resource.create(input);
       setRecords((current) => [...current, created]);
+      return created;
     },
     [resource],
   );
+
+  /** Keeps the current list if the reload fails; a stale list beats an empty one. */
+  const reload = useCallback(async () => {
+    try {
+      setRecords(await resource.list());
+    } catch {
+      /* the next reload will try again */
+    }
+  }, [resource]);
 
   const update = useCallback(
     (id: string, patch: Partial<I>) =>
@@ -81,5 +93,5 @@ export function useRecords<T extends { id: string }, I>(resource: Resource<T, I>
     [optimistic, resource],
   );
 
-  return { records, status, saveError, add, update, remove };
+  return { records, status, saveError, add, reload, update, remove };
 }

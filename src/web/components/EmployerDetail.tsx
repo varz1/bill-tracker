@@ -4,8 +4,11 @@ import { CONTRACT_LABELS, SYNC_LABELS } from "../../shared/employers";
 import { formatHours } from "../../shared/format";
 import type { Overview } from "../../shared/income";
 import type { Employer, EmployerInput, Income, IncomeInput, Shift, ShiftInput } from "../../shared/schemas";
+import { api } from "../lib/api";
 import { useSettings } from "../lib/settings";
+import { useCalendar } from "../lib/useCalendar";
 import type { Records } from "../lib/useRecords";
+import { CalendarSection } from "./CalendarSection";
 import { EmployerForm } from "./EmployerForm";
 import { Modal } from "./Modal";
 import { PayslipForm } from "./PayslipForm";
@@ -57,6 +60,15 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
   const inUse = mySlips.length + myShifts.length > 0;
   const close = () => setEditing(null);
 
+  // Calendar shifts arrive in the background, so the shift list is reloaded when a sync finishes.
+  const linked = employer.sync === "calendar";
+  const calendar = useCalendar(employer.id, linked, shifts.reload);
+
+  async function unlinkCalendar(keep: "keep" | "delete") {
+    await api.calendar.unlink(employer.id, keep);
+    await Promise.all([employers.reload(), shifts.reload()]);
+  }
+
   return (
     <>
       <button onClick={onBack} className="-ml-1 mb-3 flex items-center gap-1 rounded-md px-1 py-1 text-sm text-ink/55 hover:text-ink">
@@ -80,6 +92,8 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
           <Pencil className="h-4 w-4" />
         </button>
       </section>
+
+      {linked && <CalendarSection calendar={calendar} onUnlink={unlinkCalendar} />}
 
       <div className="mb-4 grid grid-cols-3 gap-2">
         <MiniStat label="Gross (paid weeks)" value={fmt.money(gross)} />
@@ -129,6 +143,8 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
               Cancel
             </button>
           </span>
+        ) : linked ? (
+          <p className="text-xs text-ink/35">To delete {employer.name}, unlink its calendar first.</p>
         ) : inUse ? (
           <p className="text-xs text-ink/35">
             {employer.name} has {mySlips.length} {mySlips.length === 1 ? "payslip" : "payslips"} and {myShifts.length}{" "}
@@ -146,8 +162,18 @@ export function EmployerDetail({ employer, employers, payslips, shifts, overview
           <EmployerForm
             employer={employer}
             all={employers.records}
-            onSubmit={async (input) => {
+            linkedUrl={calendar.status?.url}
+            onSubmit={async (input, link) => {
+              const breaksChanged = linked && (input.breakRule !== employer.breakRule || input.breakMinutes !== employer.breakMinutes);
               await employers.update(employer.id, input);
+              if (link) {
+                await api.calendar.link(employer.id, link);
+                await employers.reload();
+                calendar.expectSync();
+              } else if (breaksChanged) {
+                // New break rules change the paid hours, so the calendar shifts need working out again.
+                await calendar.syncNow();
+              }
               close();
             }}
           />

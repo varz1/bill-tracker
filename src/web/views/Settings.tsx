@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { SettingsPatchSchema, type Settings as SettingsValue } from "../../shared/schemas";
+import { isValidZone } from "../../shared/timezone";
 import { inputClass, labelClass } from "../components/fields";
 import { DEMO_MODE } from "../config";
 import { useSettings } from "../lib/settings";
 
 const CURRENCIES = Intl.supportedValuesOf("currency");
+const TIME_ZONES = Intl.supportedValuesOf("timeZone");
 
 export default function Settings() {
   const { settings, update } = useSettings();
@@ -22,7 +24,9 @@ export default function Settings() {
     if (DEMO_MODE) return;
     const currency = draft.currency.trim().toUpperCase();
     if (!CURRENCIES.includes(currency)) return setError("Choose a valid currency code, e.g. AUD.");
-    const patch = SettingsPatchSchema.safeParse({ ...draft, currency });
+    const timeZone = draft.timeZone.trim();
+    if (!isValidZone(timeZone)) return setError("Choose a valid time zone, e.g. Australia/Sydney.");
+    const patch = SettingsPatchSchema.safeParse({ ...draft, currency, timeZone });
     if (!patch.success) return setError("Some of these values aren't valid.");
 
     setError(null);
@@ -68,6 +72,26 @@ export default function Settings() {
             <option value={1}>Monday</option>
             <option value={0}>Sunday</option>
           </select>
+        </label>
+
+        <label className="block">
+          <span className={labelClass}>Time zone</span>
+          <input
+            list="time-zones"
+            value={draft.timeZone}
+            onChange={(e) => set("timeZone", e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            className={inputClass}
+          />
+          <datalist id="time-zones">
+            {TIME_ZONES.map((z) => (
+              <option key={z} value={z} />
+            ))}
+          </datalist>
+          <span className="mt-1 block text-xs text-ink/35">
+            Used by calendar sync for a calendar that doesn't say which time zone its events are in.
+          </span>
         </label>
 
         {error && (

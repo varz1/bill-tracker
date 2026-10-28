@@ -1,5 +1,5 @@
 import { CalendarDays } from "lucide-react";
-import { formatHours } from "../../shared/format";
+import { formatShiftHours } from "../../shared/format";
 import type { Shift } from "../../shared/schemas";
 import { useSettings } from "../lib/settings";
 import { RowActions } from "./RowActions";
@@ -24,7 +24,7 @@ export function ShiftRow({ shift: s, onEdit, onDelete }: Props) {
         </div>
         {s.start && s.end && <div className="mt-0.5 text-xs text-ink/45">{s.start}–{s.end}</div>}
       </div>
-      <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">{formatHours(s.hours)}</div>
+      <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">{formatShiftHours(s.hours)}</div>
       {imported ? (
         <div className="w-[3.75rem] shrink-0" />
       ) : (

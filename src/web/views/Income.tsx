@@ -107,9 +107,14 @@ export default function Income({ employerId, onOpenEmployer }: Props) {
         <Modal title="Add employer" onClose={() => setAdding(false)}>
           <EmployerForm
             all={employers.records}
-            onSubmit={async (input) => {
-              await employers.add(input);
+            onSubmit={async (input, link) => {
+              const created = await employers.add(input);
               setAdding(false);
+              if (!link) return;
+              // The employer exists now; linking can still fail, in which case its page lets them try again.
+              await api.calendar.link(created.id, link).catch(() => undefined);
+              await employers.reload();
+              onOpenEmployer(created.id);
             }}
           />
         </Modal>

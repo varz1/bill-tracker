@@ -16,12 +16,17 @@ Track recurring bills, shifts and income in one place. Single currency, single u
 - Keep one record per employer (name, colour, full-time, part-time or casual). Open an employer to add its payslips (gross, tax, net, super) and shifts (date, paid hours, optional start and end times).
 - The Income page combines every employer: charts of gross pay by week, split by employer, and paid hours by week.
 - Stats: total gross, net and tax, average net per week, average hours per week, average hourly rate (gross ÷ paid hours).
+- **Calendar sync:** link an employer to a public iCal feed (any calendar app's subscription link, `https://` or `webcal://`) and its shifts follow your roster, with nothing to type.
+  - Paid hours are the event's length minus the unpaid meal break. Pick the rule for your industry (retail, hospitality, fast food, restaurants, cleaning, clerks, pharmacy, aged care, children's services, security, storage, health, building) and a 30, 45 or 60 minute break. The rules come from the Fair Work awards as at 1 July 2026, so check your own contract.
+  - Times use the time zone the calendar names, falling back to the one in Settings.
+  - It syncs in the background every 15 minutes or so, when you open the employer, and on "Sync now". If the calendar can't be read, or comes back empty, nothing is deleted.
+  - Calendar shifts are read-only; change them in the calendar. Shifts you enter yourself are never touched. Unlinking either keeps the calendar's shifts as your own or deletes them.
+  - Repeating events aren't supported yet and are skipped.
 - Averages only use weeks that are fully paid, so shifts still waiting on a payslip don't drag them down. A fortnightly payslip counts in its second week.
 
 **General**
 - One currency, chosen in Settings. Amounts are stored as whole cents and never converted.
-- Demo mode shows a "made-up data" note and locks Settings.
-- Planned: sync shifts from a calendar (iCal) feed on a schedule.
+- Demo mode shows a "made-up data" note, locks Settings and turns calendar sync off.
 
 ## Stack
 
@@ -54,4 +59,4 @@ Turn off demo mode for a real deployment in [`src/web/config.ts`](src/web/config
 ## Docs
 
 - [API reference](docs/api.md)
-- [Deploying to Cloudflare](docs/deploy.md)
+- [Deploying to Cloudflare](docs/deploy.md), including the calendar sync schedule and limits
